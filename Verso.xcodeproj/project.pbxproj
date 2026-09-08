@@ -1,0 +1,401 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 56;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		AA10000000000000000000B1 /* VersoApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA10000000000000000000A1 /* VersoApp.swift */; };
+		AA10000000000000000000B2 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA10000000000000000000A2 /* AppDelegate.swift */; };
+		AA10000000000000000000B3 /* MenuBarController.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA10000000000000000000A3 /* MenuBarController.swift */; };
+		AA10000000000000000000B4 /* PermissionManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA10000000000000000000A4 /* PermissionManager.swift */; };
+		AA10000000000000000000B5 /* PermissionsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA10000000000000000000A5 /* PermissionsView.swift */; };
+		AA10000000000000000000B6 /* OnboardingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA10000000000000000000A6 /* OnboardingView.swift */; };
+		AA10000000000000000000B7 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA10000000000000000000A7 /* SettingsView.swift */; };
+		AA1000000000000000000101 /* SettingsStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA1000000000000000000102 /* SettingsStore.swift */; };
+		AA10000000000000000000B8 /* AppMetadata.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA10000000000000000000A8 /* AppMetadata.swift */; };
+		AA10000000000000000000B9 /* PermissionTypes.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA10000000000000000000A9 /* PermissionTypes.swift */; };
+		AA10000000000000000000BA /* TargetWindowMetadata.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA10000000000000000000AC /* TargetWindowMetadata.swift */; };
+		AA10000000000000000000BB /* TitleBarHitTester.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA10000000000000000000AD /* TitleBarHitTester.swift */; };
+		AA10000000000000000000BC /* AccessibilityWindowService.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA10000000000000000000AE /* AccessibilityWindowService.swift */; };
+		AA10000000000000000000BD /* AXValidation.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA10000000000000000000AF /* AXValidation.swift */; };
+		AA10000000000000000000C1 /* GlobalInputMonitor.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA10000000000000000000C2 /* GlobalInputMonitor.swift */; };
+		AA10000000000000000000C3 /* InputSequence.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA10000000000000000000C4 /* InputSequence.swift */; };
+		AA10000000000000000000D1 /* CoordinateSpaceConverter.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA10000000000000000000D2 /* CoordinateSpaceConverter.swift */; };
+		AA10000000000000000000D3 /* FlipLifecycleState.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA10000000000000000000D4 /* FlipLifecycleState.swift */; };
+		AA10000000000000000000D5 /* FlipOverlayWindowController.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA10000000000000000000D6 /* FlipOverlayWindowController.swift */; };
+		AA10000000000000000000D8 /* WindowCaptureResolver.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA10000000000000000000D7 /* WindowCaptureResolver.swift */; };
+		AA10000000000000000000DA /* TemporaryCaptureResource.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA10000000000000000000D9 /* TemporaryCaptureResource.swift */; };
+		AA10000000000000000000DC /* WindowCaptureService.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA10000000000000000000DB /* WindowCaptureService.swift */; };
+		AA10000000000000000000DD /* FlipAnimationController.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA10000000000000000000DE /* FlipAnimationController.swift */; };
+			AA10000000000000000000E1 /* NativeNoteEditor.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA10000000000000000000E2 /* NativeNoteEditor.swift */; };
+			AA10000000000000000000E3 /* OverlayContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA10000000000000000000E4 /* OverlayContentView.swift */; };
+			AA10000000000000000000F1 /* WindowIdentityResolver.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA10000000000000000000F6 /* WindowIdentityResolver.swift */; };
+			AA10000000000000000000F2 /* WindowNote.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA10000000000000000000F7 /* WindowNote.swift */; };
+			AA10000000000000000000F3 /* NoteRepository.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA10000000000000000000F8 /* NoteRepository.swift */; };
+			AA10000000000000000000F4 /* AutosaveCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA10000000000000000000F9 /* AutosaveCoordinator.swift */; };
+			AA10000000000000000000F5 /* NoteSessionController.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA10000000000000000000FA /* NoteSessionController.swift */; };
+			AA10000000000000000000FB /* WindowObservationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA10000000000000000000FC /* WindowObservationService.swift */; };
+			AA10000000000000000000FD /* NoteLibraryController.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA10000000000000000000FE /* NoteLibraryController.swift */; };
+		AA1F00000000000000000007 /* AppLocalization.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA1F00000000000000000006 /* AppLocalization.swift */; };
+		AA1F00000000000000000004 /* Localizable.strings in Resources */ = {isa = PBXBuildFile; fileRef = AA1F00000000000000000001 /* Localizable.strings */; };
+		AA1F00000000000000000005 /* Localizable.strings in Resources */ = {isa = PBXBuildFile; fileRef = AA1F00000000000000000002 /* Localizable.strings */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
+		AA10000000000000000000A1 /* VersoApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VersoApp.swift; sourceTree = "<group>"; };
+		AA10000000000000000000A2 /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
+		AA10000000000000000000A3 /* MenuBarController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuBarController.swift; sourceTree = "<group>"; };
+		AA10000000000000000000A4 /* PermissionManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PermissionManager.swift; sourceTree = "<group>"; };
+		AA10000000000000000000A5 /* PermissionsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PermissionsView.swift; sourceTree = "<group>"; };
+		AA10000000000000000000A6 /* OnboardingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingView.swift; sourceTree = "<group>"; };
+		AA10000000000000000000A7 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
+		AA1000000000000000000102 /* SettingsStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsStore.swift; sourceTree = "<group>"; };
+		AA10000000000000000000AE /* AccessibilityWindowService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccessibilityWindowService.swift; sourceTree = "<group>"; };
+		AA10000000000000000000A8 /* AppMetadata.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppMetadata.swift; sourceTree = "<group>"; };
+		AA10000000000000000000A9 /* PermissionTypes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PermissionTypes.swift; sourceTree = "<group>"; };
+		AA10000000000000000000AC /* TargetWindowMetadata.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TargetWindowMetadata.swift; sourceTree = "<group>"; };
+		AA10000000000000000000AD /* TitleBarHitTester.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TitleBarHitTester.swift; sourceTree = "<group>"; };
+		AA10000000000000000000AF /* AXValidation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AXValidation.swift; sourceTree = "<group>"; };
+		AA1F00000000000000000006 /* AppLocalization.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppLocalization.swift; sourceTree = "<group>"; };
+		AA10000000000000000000AA /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		AA1F00000000000000000001 /* Localizable.strings */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; language = en; name = en; path = en.lproj/Localizable.strings; sourceTree = "<group>"; };
+		AA1F00000000000000000002 /* Localizable.strings */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; language = tr; name = tr; path = tr.lproj/Localizable.strings; sourceTree = "<group>"; };
+		AA1F00000000000000000003 /* Localizable.strings */ = {isa = PBXVariantGroup; children = (
+			AA1F00000000000000000001 /* Localizable.strings */,
+			AA1F00000000000000000002 /* Localizable.strings */,
+		); name = Localizable.strings; sourceTree = "<group>"; };
+		AA10000000000000000000AB /* Verso.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Verso.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		AA10000000000000000000C2 /* GlobalInputMonitor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GlobalInputMonitor.swift; sourceTree = "<group>"; };
+		AA10000000000000000000C4 /* InputSequence.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InputSequence.swift; sourceTree = "<group>"; };
+		AA10000000000000000000D2 /* CoordinateSpaceConverter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CoordinateSpaceConverter.swift; sourceTree = "<group>"; };
+		AA10000000000000000000D4 /* FlipLifecycleState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FlipLifecycleState.swift; sourceTree = "<group>"; };
+		AA10000000000000000000D6 /* FlipOverlayWindowController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FlipOverlayWindowController.swift; sourceTree = "<group>"; };
+		AA10000000000000000000D7 /* WindowCaptureResolver.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WindowCaptureResolver.swift; sourceTree = "<group>"; };
+		AA10000000000000000000D9 /* TemporaryCaptureResource.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TemporaryCaptureResource.swift; sourceTree = "<group>"; };
+		AA10000000000000000000DB /* WindowCaptureService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WindowCaptureService.swift; sourceTree = "<group>"; };
+		AA10000000000000000000DE /* FlipAnimationController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FlipAnimationController.swift; sourceTree = "<group>"; };
+			AA10000000000000000000E2 /* NativeNoteEditor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeNoteEditor.swift; sourceTree = "<group>"; };
+			AA10000000000000000000E4 /* OverlayContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OverlayContentView.swift; sourceTree = "<group>"; };
+			AA10000000000000000000F6 /* WindowIdentityResolver.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WindowIdentityResolver.swift; sourceTree = "<group>"; };
+			AA10000000000000000000F7 /* WindowNote.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WindowNote.swift; sourceTree = "<group>"; };
+			AA10000000000000000000F8 /* NoteRepository.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NoteRepository.swift; sourceTree = "<group>"; };
+			AA10000000000000000000F9 /* AutosaveCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AutosaveCoordinator.swift; sourceTree = "<group>"; };
+			AA10000000000000000000FA /* NoteSessionController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NoteSessionController.swift; sourceTree = "<group>"; };
+			AA10000000000000000000FC /* WindowObservationService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WindowObservationService.swift; sourceTree = "<group>"; };
+			AA10000000000000000000FE /* NoteLibraryController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NoteLibraryController.swift; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXGroup section */
+		BB0000000000000000000001 /* Verso */ = {
+			isa = PBXGroup;
+			children = (
+				BB0000000000000000000002 /* Sources */,
+				BB0000000000000000000005 /* Resources */,
+				BB0000000000000000000006 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		BB0000000000000000000002 /* Sources */ = {
+			isa = PBXGroup;
+			children = (
+				BB0000000000000000000003 /* Verso */,
+				BB0000000000000000000004 /* VersoCore */,
+			);
+			path = Sources;
+			sourceTree = "<group>";
+		};
+		BB0000000000000000000003 /* Verso */ = {
+			isa = PBXGroup;
+			children = (
+				AA10000000000000000000A1 /* VersoApp.swift */,
+				AA10000000000000000000A2 /* AppDelegate.swift */,
+				AA10000000000000000000A3 /* MenuBarController.swift */,
+				AA10000000000000000000A4 /* PermissionManager.swift */,
+				AA10000000000000000000A5 /* PermissionsView.swift */,
+				AA10000000000000000000A6 /* OnboardingView.swift */,
+				AA10000000000000000000A7 /* SettingsView.swift */,
+				AA1000000000000000000102 /* SettingsStore.swift */,
+				AA10000000000000000000AE /* AccessibilityWindowService.swift */,
+				AA10000000000000000000C2 /* GlobalInputMonitor.swift */,
+				AA10000000000000000000D6 /* FlipOverlayWindowController.swift */,
+				AA10000000000000000000E2 /* NativeNoteEditor.swift */,
+					AA10000000000000000000E4 /* OverlayContentView.swift */,
+					AA10000000000000000000DB /* WindowCaptureService.swift */,
+					AA10000000000000000000FA /* NoteSessionController.swift */,
+					AA10000000000000000000FC /* WindowObservationService.swift */,
+					AA10000000000000000000FE /* NoteLibraryController.swift */,
+				);
+			path = Verso;
+			sourceTree = "<group>";
+		};
+		BB0000000000000000000004 /* VersoCore */ = {
+			isa = PBXGroup;
+			children = (
+				AA10000000000000000000A8 /* AppMetadata.swift */,
+				AA10000000000000000000A9 /* PermissionTypes.swift */,
+				AA10000000000000000000AC /* TargetWindowMetadata.swift */,
+				AA10000000000000000000AD /* TitleBarHitTester.swift */,
+				AA10000000000000000000AF /* AXValidation.swift */,
+				AA1F00000000000000000006 /* AppLocalization.swift */,
+				AA10000000000000000000C4 /* InputSequence.swift */,
+				AA10000000000000000000D2 /* CoordinateSpaceConverter.swift */,
+				AA10000000000000000000D4 /* FlipLifecycleState.swift */,
+				AA10000000000000000000D7 /* WindowCaptureResolver.swift */,
+					AA10000000000000000000D9 /* TemporaryCaptureResource.swift */,
+					AA10000000000000000000DE /* FlipAnimationController.swift */,
+					AA10000000000000000000F6 /* WindowIdentityResolver.swift */,
+					AA10000000000000000000F7 /* WindowNote.swift */,
+					AA10000000000000000000F8 /* NoteRepository.swift */,
+					AA10000000000000000000F9 /* AutosaveCoordinator.swift */,
+				);
+			path = VersoCore;
+			sourceTree = "<group>";
+		};
+		BB0000000000000000000005 /* Resources */ = {
+			isa = PBXGroup;
+			children = (
+				AA10000000000000000000AA /* Info.plist */,
+				BB1F00000000000000000001 /* Strings */,
+			);
+			path = Resources;
+			sourceTree = "<group>";
+		};
+		BB1F00000000000000000001 /* Strings */ = {
+			isa = PBXGroup;
+			children = (
+				AA1F00000000000000000003 /* Localizable.strings */,
+			);
+			path = ../Sources/VersoCore/Resources;
+			sourceTree = "<group>";
+		};
+		BB0000000000000000000006 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				AA10000000000000000000AB /* Verso.app */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		DD0000000000000000000001 /* Verso */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = FF0000000000000000000002 /* Build configuration list for PBXNativeTarget "Verso" */;
+			buildPhases = (
+				EE0000000000000000000001 /* Sources */,
+				EE1F00000000000000000001 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = Verso;
+			productName = Verso;
+			productReference = AA10000000000000000000AB /* Verso.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		CC0000000000000000000001 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = 1;
+				LastSwiftUpdateCheck = 1500;
+				LastUpgradeCheck = 1500;
+			};
+			buildConfigurationList = FF0000000000000000000001 /* Build configuration list for PBXProject "Verso" */;
+			compatibilityVersion = "Xcode 14.0";
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+				tr,
+				Base,
+			);
+			mainGroup = BB0000000000000000000001 /* Verso */;
+			productRefGroup = BB0000000000000000000006 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				DD0000000000000000000001 /* Verso */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXSourcesBuildPhase section */
+		EE0000000000000000000001 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				AA10000000000000000000B1 /* VersoApp.swift in Sources */,
+				AA10000000000000000000B2 /* AppDelegate.swift in Sources */,
+				AA10000000000000000000B3 /* MenuBarController.swift in Sources */,
+				AA10000000000000000000B4 /* PermissionManager.swift in Sources */,
+				AA10000000000000000000B5 /* PermissionsView.swift in Sources */,
+				AA10000000000000000000B6 /* OnboardingView.swift in Sources */,
+				AA10000000000000000000B7 /* SettingsView.swift in Sources */,
+				AA1000000000000000000101 /* SettingsStore.swift in Sources */,
+				AA10000000000000000000B8 /* AppMetadata.swift in Sources */,
+				AA10000000000000000000B9 /* PermissionTypes.swift in Sources */,
+				AA10000000000000000000BA /* TargetWindowMetadata.swift in Sources */,
+				AA10000000000000000000BB /* TitleBarHitTester.swift in Sources */,
+				AA10000000000000000000BC /* AccessibilityWindowService.swift in Sources */,
+				AA10000000000000000000BD /* AXValidation.swift in Sources */,
+				AA10000000000000000000C1 /* GlobalInputMonitor.swift in Sources */,
+				AA10000000000000000000C3 /* InputSequence.swift in Sources */,
+				AA10000000000000000000D1 /* CoordinateSpaceConverter.swift in Sources */,
+				AA10000000000000000000D3 /* FlipLifecycleState.swift in Sources */,
+				AA10000000000000000000D5 /* FlipOverlayWindowController.swift in Sources */,
+				AA10000000000000000000D8 /* WindowCaptureResolver.swift in Sources */,
+				AA10000000000000000000DA /* TemporaryCaptureResource.swift in Sources */,
+				AA10000000000000000000DC /* WindowCaptureService.swift in Sources */,
+				AA10000000000000000000DD /* FlipAnimationController.swift in Sources */,
+				AA10000000000000000000E1 /* NativeNoteEditor.swift in Sources */,
+				AA10000000000000000000E3 /* OverlayContentView.swift in Sources */,
+				AA10000000000000000000F1 /* WindowIdentityResolver.swift in Sources */,
+				AA10000000000000000000F2 /* WindowNote.swift in Sources */,
+				AA10000000000000000000F3 /* NoteRepository.swift in Sources */,
+				AA10000000000000000000F4 /* AutosaveCoordinator.swift in Sources */,
+				AA10000000000000000000F5 /* NoteSessionController.swift in Sources */,
+				AA10000000000000000000FB /* WindowObservationService.swift in Sources */,
+				AA10000000000000000000FD /* NoteLibraryController.swift in Sources */,
+				AA1F00000000000000000007 /* AppLocalization.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXResourcesBuildPhase section */
+		EE1F00000000000000000001 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				AA1F00000000000000000004 /* Localizable.strings in Resources */,
+				AA1F00000000000000000005 /* Localizable.strings in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin XCBuildConfiguration section */
+		120000000000000000000001 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"DEBUG=1",
+					"$(inherited)",
+				);
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				ONLY_ACTIVE_ARCH = YES;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+			};
+			name = Debug;
+		};
+		120000000000000000000002 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				SWIFT_COMPILATION_MODE = wholemodule;
+			};
+			name = Release;
+		};
+		120000000000000000000003 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_IDENTITY = "-";
+				CODE_SIGN_STYLE = Manual;
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 4;
+				DEVELOPMENT_TEAM = "";
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = Resources/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				MARKETING_VERSION = 1.1.2;
+				PRODUCT_BUNDLE_IDENTIFIER = com.verso.app;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+		120000000000000000000004 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_IDENTITY = "-";
+				CODE_SIGN_STYLE = Manual;
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 4;
+				DEVELOPMENT_TEAM = "";
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = Resources/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				MARKETING_VERSION = 1.1.2;
+				PRODUCT_BUNDLE_IDENTIFIER = com.verso.app;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		FF0000000000000000000001 /* Build configuration list for PBXProject "Verso" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				120000000000000000000001 /* Debug */,
+				120000000000000000000002 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		FF0000000000000000000002 /* Build configuration list for PBXNativeTarget "Verso" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				120000000000000000000003 /* Debug */,
+				120000000000000000000004 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = CC0000000000000000000001 /* Project object */;
+}

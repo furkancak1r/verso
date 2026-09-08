@@ -1,0 +1,35 @@
+# Swift and release outputs
+.build/
+build/
+.swiftpm/
+DerivedData/
+*.dSYM/
+
+# Xcode per-user state
+xcuserdata/
+*.xcodeproj/project.xcworkspace/
+*.xcodeproj/xcuserdata/
+*.xcuserstate
+
+# Local work journal and macOS metadata
+/IMPLEMENTATION_PLAN.md
+.DS_Store
+
+# Local configuration, signing credentials and note stores
+.env
+.env.*
+!.env.example
+*.p12
+*.p8
+*.key
+*.pem
+*.mobileprovision
+*.provisionprofile
+*.store
+*.store-*
+*.sqlite
+*.sqlite-*
+*.sqlite3
+*.db
+*.db-*
+*.log
