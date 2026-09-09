@@ -1,0 +1,7 @@
+// Signing.xcconfig — tracked certificate pin shared by Xcode/release/host builds.
+// VERSO_SIGNING_IDENTITY is a certificate SHA-1 fingerprint (40 hex chars).
+// Public certificate fingerprint only; safe to commit. Never commit the private key.
+// ponytail: single pin, no fallback; private key stays in the login Keychain only.
+VERSO_SIGNING_IDENTITY = 2AAA001DC07A36C6A87BEFCFBDFC20D303F29E7C
+CODE_SIGN_IDENTITY = $(VERSO_SIGNING_IDENTITY)
+CODE_SIGN_STYLE = Manual

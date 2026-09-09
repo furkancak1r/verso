@@ -63,6 +63,7 @@
 		AA10000000000000000000AF /* AXValidation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AXValidation.swift; sourceTree = "<group>"; };
 		AA1F00000000000000000006 /* AppLocalization.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppLocalization.swift; sourceTree = "<group>"; };
 		AA10000000000000000000AA /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		AA1D00000000000000000001 /* Signing.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Signing.xcconfig; sourceTree = "<group>"; };
 		AA1F00000000000000000001 /* Localizable.strings */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; language = en; name = en; path = en.lproj/Localizable.strings; sourceTree = "<group>"; };
 		AA1F00000000000000000002 /* Localizable.strings */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; language = tr; name = tr; path = tr.lproj/Localizable.strings; sourceTree = "<group>"; };
 		AA1F00000000000000000003 /* Localizable.strings */ = {isa = PBXVariantGroup; children = (
@@ -160,6 +161,7 @@
 			isa = PBXGroup;
 			children = (
 				AA10000000000000000000AA /* Info.plist */,
+				AA1D00000000000000000001 /* Signing.xcconfig */,
 				AA1C00000000000000000002 /* AppIcon.icns */,
 				BB1F00000000000000000001 /* Strings */,
 			);
@@ -336,11 +338,12 @@
 		};
 		120000000000000000000003 /* Debug */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = AA1D00000000000000000001 /* Signing.xcconfig */;
 			buildSettings = {
-				CODE_SIGN_IDENTITY = "-";
+				CODE_SIGN_IDENTITY = "$(VERSO_SIGNING_IDENTITY)";
 				CODE_SIGN_STYLE = Manual;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 9;
+				CURRENT_PROJECT_VERSION = 14;
 				DEVELOPMENT_TEAM = "";
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = Resources/Info.plist;
@@ -348,7 +351,7 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				MARKETING_VERSION = 1.1.3;
+				MARKETING_VERSION = 1.2.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.verso.app;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = YES;
@@ -358,11 +361,12 @@
 		};
 		120000000000000000000004 /* Release */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = AA1D00000000000000000001 /* Signing.xcconfig */;
 			buildSettings = {
-				CODE_SIGN_IDENTITY = "-";
+				CODE_SIGN_IDENTITY = "$(VERSO_SIGNING_IDENTITY)";
 				CODE_SIGN_STYLE = Manual;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 9;
+				CURRENT_PROJECT_VERSION = 14;
 				DEVELOPMENT_TEAM = "";
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = Resources/Info.plist;
@@ -370,7 +374,7 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				MARKETING_VERSION = 1.1.3;
+				MARKETING_VERSION = 1.2.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.verso.app;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = YES;

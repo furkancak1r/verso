@@ -175,7 +175,7 @@ final class NoteLibraryController: NSObject, NSWindowDelegate {
         updateView()
     }
 
-    private func reload() {
+    private func reload(preservingEditor: Bool = false) {
         guard let view = libraryView else { return }
 
         do {
@@ -192,10 +192,20 @@ final class NoteLibraryController: NSObject, NSWindowDelegate {
                     .fetchArchivedNotesThrowing()
             }
 
-            rows = Self.filter(fetched, query: query)
+            rows = Self.filter(fetched, query: query).map { $0.detachedCopy() }
             lastReadError = nil
+            let wasUpdatingSelection = isUpdatingSelection
+            isUpdatingSelection = true
             view.tableView.reloadData()
-            restoreOrChooseSelection()
+            if preservingEditor {
+                if let row = rows.firstIndex(where: { $0.id == selectedNote?.id }) {
+                    view.tableView.selectRowIndexes(IndexSet(integer: row), byExtendingSelection: false)
+                } else {
+                    view.tableView.deselectAll(nil)
+                }
+            }
+            isUpdatingSelection = wasUpdatingSelection
+            if !preservingEditor { restoreOrChooseSelection() }
             updateView()
         } catch {
             // Retain the prior rows while showing the read error. An empty
@@ -271,7 +281,7 @@ final class NoteLibraryController: NSObject, NSWindowDelegate {
             return false
         }
 
-        selectedNote = note
+        selectedNote = noteSessionController.libraryEditorNote
         selectedToken = start.token
         let token = start.token
         libraryView?.editor.onTextChange = { [weak self] text in
@@ -279,6 +289,7 @@ final class NoteLibraryController: NSObject, NSWindowDelegate {
                 text,
                 token: token
             )
+            self?.updateView()
         }
         libraryView?.editor.load(start.text)
         libraryView?.editor.setEditingEnabled(true)
@@ -323,7 +334,11 @@ final class NoteLibraryController: NSObject, NSWindowDelegate {
     }
 
     func saveStateDidChange() {
-        if noteSessionController.lastSaveError == nil { statusMessage = nil }
+        if noteSessionController.lastSaveError == nil {
+            statusMessage = nil
+            // Empty notes leave the list without replacing the active editor.
+            if selectedToken != nil { reload(preservingEditor: true) }
+        }
         updateStatus()
     }
 
@@ -383,9 +398,11 @@ final class NoteLibraryController: NSObject, NSWindowDelegate {
         ].filter { !$0.isEmpty }.joined(separator: "  •  ")
         view.detailMetadata.stringValue = metadata
         view.pinButton.title = note.pinned ? L("library.unpin") : L("library.pin")
-        view.pinButton.isEnabled = !note.archived && selectedToken != nil
+        view.pinButton.isEnabled = !note.archived && selectedToken != nil && (note.pinned || note.hasContent)
+        view.pinButton.toolTip = note.hasContent || note.pinned ? nil : L("overlay.emptyNoteHelp")
         view.archiveButton.title = note.archived ? L("library.restore") : L("library.archive")
-        view.archiveButton.isEnabled = selectedToken != nil
+        view.archiveButton.isEnabled = selectedToken != nil && note.hasContent
+        view.archiveButton.toolTip = note.hasContent ? nil : L("overlay.emptyNoteHelp")
         view.deleteButton.isEnabled = selectedToken != nil
         view.showWindowButton.isEnabled = !note.archived
             && validatedLiveTarget(for: note) != nil

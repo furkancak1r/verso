@@ -161,3 +161,16 @@
 "perm.appUnavailable" = "The running Verso.app could not be found. Open the installed application and try again.";
 "perm.allowed" = "macOS grants access to this running copy";
 "perm.notAllowed" = "macOS has not granted access to this running copy";
+
+"overlay.emptyNoteHelp" = "Write a note before pinning or archiving it.";
+
+/* Application note tabs */
+"tabs.list" = "Notes for this application";
+"tabs.new" = "New tab";
+"tabs.newHelp" = "New note tab (⌘T)";
+"tabs.close" = "Close note tab";
+"tabs.closeHelp" = "Close tab and move the note to Archive (⌘W). Empty notes are discarded.";
+"tabs.selected" = "Selected tab";
+"tabs.unselected" = "Unselected tab";
+"tabs.untitled" = "New Note %d";
+"tabs.saveFailed" = "The change could not be saved. Try again.";

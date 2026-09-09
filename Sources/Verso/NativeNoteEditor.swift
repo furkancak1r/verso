@@ -17,9 +17,12 @@ final class NativeNoteEditor: NSView, NSTextViewDelegate {
     var onTextChange: ((String) -> Void)?
 
     private var isLoading = false
+    private var lastReportedText = ""
+    private let independentUndoManager: UndoManager?
 
     init(
         initialText: String = "",
+        undoManager: UndoManager? = nil,
         onTextChange: ((String) -> Void)? = nil
     ) {
         let nativeScrollView = NSTextView
@@ -27,6 +30,7 @@ final class NativeNoteEditor: NSView, NSTextViewDelegate {
         self.scrollView = nativeScrollView
         self.textView = nativeScrollView.documentView as! NSTextView
         self.onTextChange = onTextChange
+        self.independentUndoManager = undoManager
         super.init(frame: .zero)
 
         configureTextView()
@@ -42,6 +46,28 @@ final class NativeNoteEditor: NSView, NSTextViewDelegate {
         textView.string
     }
 
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        let center = NotificationCenter.default
+        center.removeObserver(self, name: .NSUndoManagerDidUndoChange, object: nil)
+        center.removeObserver(self, name: .NSUndoManagerDidRedoChange, object: nil)
+        guard let manager = textView.undoManager else { return }
+        center.addObserver(self, selector: #selector(historyDidChange(_:)),
+                           name: .NSUndoManagerDidUndoChange, object: manager)
+        center.addObserver(self, selector: #selector(historyDidChange(_:)),
+                           name: .NSUndoManagerDidRedoChange, object: manager)
+    }
+
+    func undoManager(for view: NSTextView) -> UndoManager? {
+        independentUndoManager ?? window?.undoManager
+    }
+
+    @objc private func historyDidChange(_ notification: Notification) {
+        guard notification.object as? UndoManager === textView.undoManager,
+              textView.string != lastReportedText else { return }
+        textDidChange(notification)
+    }
+
     /// Load a different note without carrying undo actions or an invalid
     /// selection into it. NSTextView ranges are UTF-16 based, so NSString's
     /// length is used for the insertion point.
@@ -53,6 +79,7 @@ final class NativeNoteEditor: NSView, NSTextViewDelegate {
             NSRange(location: (text as NSString).length, length: 0)
         )
         textView.undoManager?.removeAllActions()
+        lastReportedText = text
         isLoading = false
     }
 
@@ -141,6 +168,7 @@ final class NativeNoteEditor: NSView, NSTextViewDelegate {
 
     func textDidChange(_ notification: Notification) {
         guard !isLoading else { return }
+        lastReportedText = textView.string
         onTextChange?(textView.string)
     }
 }

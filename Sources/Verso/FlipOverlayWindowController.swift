@@ -1027,7 +1027,6 @@ final class FlipOverlayWindowController: NSObject, NSWindowDelegate {
                   self.lifecycle.phase == .noteVisible else { return }
             self.archiveCurrentNote()
         }
-        let sessionID = noteSessionController?.activeSessionUUID
         let contentView = OverlayContentView(
             appName: target.metadata.appName,
             windowTitle: target.metadata.windowTitle,
@@ -1035,11 +1034,12 @@ final class FlipOverlayWindowController: NSObject, NSWindowDelegate {
             initialText: noteText,
             isPinned: noteSessionController?.activeSession?.note.pinned ?? false,
             backAction: returnAction,
-            onTextChange: { [weak self] text in
-                self?.noteText = text
-                self?.noteSessionController?.editorTextDidChange(
+            onTextChange: { [weak self, weak window] text in
+                guard let self, let window, self.overlayWindow === window else { return }
+                self.noteText = text
+                self.noteSessionController?.editorTextDidChange(
                     text,
-                    sessionID: sessionID
+                    sessionID: self.noteSessionController?.activeSessionUUID
                 )
             },
             onPin: pinAction,
@@ -1048,12 +1048,43 @@ final class FlipOverlayWindowController: NSObject, NSWindowDelegate {
 
 
         window.contentView = contentView
+        refreshNoteTabs(contentView)
         window.initialFirstResponder = contentView
         window.cancelAction = returnAction
         window.headerReturnAction = returnAction
         refreshWindowControls(window: window, target: target, contentView: contentView, retries: 2)
 
         return window
+    }
+
+    private func refreshNoteTabs(_ content: OverlayContentView) {
+        guard let controller = noteSessionController, let selected = controller.activeSession?.note else { return }
+        noteText = selected.noteText
+        content.configureTabs(controller.activeTabNotes.map {
+            OverlayNoteTab(id: $0.id, text: $0.noteText, pinned: $0.pinned)
+        }, selectedID: selected.id, onAdd: { [weak self] in
+            self?.changeNoteTab { $0.addTab(editorText: $1) }
+        }, onSelect: { [weak self] id in
+            self?.changeNoteTab { $0.selectTab(noteID: id, editorText: $1) }
+        }, onClose: { [weak self] id in
+            self?.changeNoteTab { $0.closeTab(noteID: id, editorText: $1) }
+        })
+    }
+
+    private func changeNoteTab(_ operation: (NoteSessionController, String) -> Bool) {
+        guard lifecycle.phase == .noteVisible, let controller = noteSessionController,
+              let content = overlayWindow?.contentView as? OverlayContentView else { return }
+        content.commitEditing()
+        guard operation(controller, content.currentEditorText()) else {
+            // A native tab button may toggle before its action runs. Restore
+            // the controller's selection when saving refuses the switch.
+            refreshNoteTabs(content)
+            content.showWindowOperationError(L("tabs.saveFailed"))
+            content.focusEditor()
+            return
+        }
+        refreshNoteTabs(content)
+        content.focusEditor()
     }
 
     private func refreshWindowControls(window: FlipOverlayWindow,
@@ -1465,6 +1496,11 @@ private final class FlipOverlayWindow: NSWindow {
     }
 
     override func sendEvent(_ event: NSEvent) {
+        if event.type == .keyDown,
+           (firstResponder as? NSTextView)?.hasMarkedText() != true,
+           (contentView as? OverlayContentView)?.handleTabShortcut(event) == true {
+            return
+        }
         // NSTextView can consume Escape before NSWindow.keyDown. Handle a
         // plain Escape here, while letting an active input method handle its
         // own composition before a subsequent Escape requests a return.

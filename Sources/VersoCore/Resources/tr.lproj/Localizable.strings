@@ -161,3 +161,16 @@
 "perm.appUnavailable" = "Çalışan Verso.app bulunamadı. Kurulu uygulamayı açıp yeniden deneyin.";
 "perm.allowed" = "macOS çalışan bu kopyaya izin veriyor";
 "perm.notAllowed" = "macOS çalışan bu kopyaya izin vermedi";
+
+"overlay.emptyNoteHelp" = "Sabitlemek veya arşivlemek için önce not yazın.";
+
+/* Application note tabs */
+"tabs.list" = "Bu uygulamanın notları";
+"tabs.new" = "Yeni sekme";
+"tabs.newHelp" = "Yeni not sekmesi (⌘T)";
+"tabs.close" = "Not sekmesini kapat";
+"tabs.closeHelp" = "Sekmeyi kapat ve notu Arşiv’e taşı (⌘W). Boş notlar silinir.";
+"tabs.selected" = "Seçili sekme";
+"tabs.unselected" = "Seçili olmayan sekme";
+"tabs.untitled" = "Yeni Not %d";
+"tabs.saveFailed" = "Değişiklik kaydedilemedi. Tekrar deneyin.";

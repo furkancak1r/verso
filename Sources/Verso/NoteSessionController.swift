@@ -32,7 +32,7 @@ final class NoteSessionController {
         let axApplication: AXUIElement
         let evidence: HitTestEvidence
         var identity: WindowIdentityResolver.Identity
-        let note: WindowNote
+        var note: WindowNote
         var metadata: TargetWindowMetadata
         var autosave: AutosaveCoordinator!
         var requiresRepositorySave = true
@@ -200,6 +200,13 @@ final class NoteSessionController {
             return nil
         }
 
+        // APPLICATION grouping: every window of the same app shares one
+        // notebook. Unidentified apps (empty bundleIdentifier) keep the legacy
+        // isolated per-window behavior below and never merge notebooks.
+        if let appKey = Self.notebookKey(bundleIdentifier: target.metadata.bundleIdentifier) {
+            return beginAppSession(for: target, appKey: appKey)
+        }
+
         // A different target cannot take over while the visible session has a
         // pending write. The old session remains active on failure.
         if let active = activeSession,
@@ -255,7 +262,7 @@ final class NoteSessionController {
             restored = nil
         }
 
-        let note = restored ?? makeNewNote(identity: identity, target: target)
+        let note = restored?.detachedCopy() ?? makeNewNote(identity: identity, target: target)
         let session = LiveSession(
             sessionUUID: sessionUUID,
             runningApplication: target.runningApplication,
@@ -266,7 +273,7 @@ final class NoteSessionController {
             note: note,
             metadata: target.metadata
         )
-        session.requiresRepositorySave = true
+        session.requiresRepositorySave = note.hasContent
         session.autosave = makeAutosave(for: note, session: session)
         session.autosave.load(note.noteText)
 
@@ -275,6 +282,523 @@ final class NoteSessionController {
         note.markOpened()
         lastBeginSucceeded = true
         return session.autosave.currentText
+    }
+
+    // MARK: - Application tabs
+
+    /// One notebook per nonempty bundleIdentifier. Tabs are live detached
+    /// drafts in stable creation order (createdAt, then UUID); blank tabs
+    /// stay in memory only until they gain content.
+    /// ponytail: ceiling is in-memory notebooks keyed by bundleIdentifier; if
+    /// persisted tab ordering beyond createdAt+UUID is ever requested, replace
+    /// AppNotebook with a real order entity instead of patching this class.
+    private final class AppNotebook {
+        let bundleID: String
+        var tabs: [WindowNote] = []
+        var autosaves: [UUID: AutosaveCoordinator] = [:]
+        var dirty: [UUID: Bool] = [:]
+        var selectedID: UUID?
+        init(bundleID: String) { self.bundleID = bundleID }
+    }
+
+    private var appNotebooks: [String: AppNotebook] = [:]
+
+    /// Nonempty bundleIdentifier is the persistent notebook key. Empty or
+    /// missing identifiers return nil so unidentified apps keep isolated
+    /// per-window behavior instead of merging into one empty-ID notebook.
+    private static func notebookKey(bundleIdentifier: String?) -> String? {
+        guard let key = bundleIdentifier?.trimmingCharacters(
+            in: .whitespacesAndNewlines
+        ), !key.isEmpty else { return nil }
+        return key
+    }
+
+    private static func tabOrder(_ a: WindowNote, _ b: WindowNote) -> Bool {
+        if a.createdAt != b.createdAt { return a.createdAt < b.createdAt }
+        return a.id.uuidString < b.id.uuidString
+    }
+
+    /// Last-used tab wins; nonblank notes are preferred after restart.
+    private static func pickSelectedID(from tabs: [WindowNote]) -> UUID? {
+        guard !tabs.isEmpty else { return nil }
+        let pool = tabs.contains(where: { $0.hasContent })
+            ? tabs.filter({ $0.hasContent }) : tabs
+        return pool.max(by: {
+            if $0.lastOpenedAt != $1.lastOpenedAt {
+                return $0.lastOpenedAt < $1.lastOpenedAt
+            }
+            return $0.id.uuidString < $1.id.uuidString
+        })?.id
+    }
+
+    /// UI contract: tabs of the active application in stable tab order.
+    /// UI reads returned models only, never mutates them.
+    var activeTabNotes: [WindowNote] {
+        guard let active = activeSession,
+              let key = Self.notebookKey(
+                  bundleIdentifier: active.metadata.bundleIdentifier
+              ),
+              let book = appNotebooks[key] else { return [] }
+        return book.tabs
+    }
+
+    /// UI contract: create an in-memory empty tab and select it. The current
+    /// tab is saved first; on failure current text/selection is preserved.
+    @discardableResult
+    func addTab(editorText: String) -> Bool {
+        guard let active = activeSession,
+              let key = Self.notebookKey(
+                  bundleIdentifier: active.metadata.bundleIdentifier
+              ),
+              let book = appNotebooks[key],
+              isTriggeringEnabled else { return false }
+        updateEditorText(editorText, for: active)
+        guard flush(active) else { return false }
+        markTabDirty(false, noteID: active.note.id)
+        let blank = makeBlankTab(
+            appKey: key,
+            target: active.metadata,
+            identity: active.identity
+        )
+        // ponytail: blank drafts stay in memory; the first content save
+        // persists them via the shared per-note autosave.
+        book.tabs.append(blank)
+        let autosave = makeTabAutosave(for: blank, bundleID: key)
+        autosave.load("")
+        book.autosaves[blank.id] = autosave
+        book.dirty[blank.id] = false
+        selectTabID(blank.id, in: book)
+        refreshSaveError()
+        return true
+    }
+
+    /// UI contract: select a tab. The current tab is saved first; on failure
+    /// current text/selection is preserved and selection never moves.
+    @discardableResult
+    func selectTab(noteID: UUID, editorText: String) -> Bool {
+        guard let active = activeSession,
+              let key = Self.notebookKey(
+                  bundleIdentifier: active.metadata.bundleIdentifier
+              ),
+              let book = appNotebooks[key],
+              book.tabs.contains(where: { $0.id == noteID }),
+              isTriggeringEnabled else { return false }
+        updateEditorText(editorText, for: active)
+        guard flush(active) else { return false }
+        markTabDirty(false, noteID: active.note.id)
+        // ponytail: selection moves only after the previous tab saved.
+        selectTabID(noteID, in: book)
+        refreshSaveError()
+        return true
+    }
+
+    /// UI contract: close a tab. The current tab is saved first; on failure
+    /// current text/selection is preserved. A nonblank tab is archived
+    /// (recoverable in Archive); a blank tab is discarded; closing the last
+    /// tab creates one empty tab.
+    @discardableResult
+    func closeTab(noteID: UUID, editorText: String) -> Bool {
+        guard let active = activeSession,
+              let key = Self.notebookKey(
+                  bundleIdentifier: active.metadata.bundleIdentifier
+              ),
+              let book = appNotebooks[key],
+              let index = book.tabs.firstIndex(where: { $0.id == noteID }),
+              isTriggeringEnabled else { return false }
+        updateEditorText(editorText, for: active)
+        guard flush(active) else { return false }
+        markTabDirty(false, noteID: active.note.id)
+        // Flush the closing tab itself so an inactive dirty tab is saved
+        // before deciding blank vs nonblank; failure preserves everything.
+        if let closing = book.autosaves[noteID],
+           book.dirty[noteID] == true || closing.isDirty {
+            switch closing.forceFlush() {
+            case .success:
+                markTabDirty(false, noteID: noteID)
+            case .failure(let error):
+                setSaveError(error)
+                return false
+            }
+        }
+        guard let closingTab = book.tabs.first(where: { $0.id == noteID })
+        else { return false }
+        if closingTab.hasContent {
+            let oldArchived = closingTab.archived
+            let oldUpdatedAt = closingTab.updatedAt
+            closingTab.archived = true
+            closingTab.markUpdated()
+            markTabDirty(true, noteID: noteID)
+            let (saved, error) = saveRepository(note: closingTab)
+            guard saved else {
+                closingTab.archived = oldArchived
+                closingTab.updatedAt = oldUpdatedAt
+                markTabDirty(true, noteID: noteID)
+                setSaveError(error)
+                return false
+            }
+        } else {
+            // ponytail: clearing only removes the stored row by UUID; the
+            // live draft object stays valid for Undo until discarded here.
+            let (saved, error) = saveRepository(note: closingTab)
+            guard saved else {
+                setSaveError(error)
+                return false
+            }
+        }
+        book.tabs.remove(at: index)
+        book.autosaves.removeValue(forKey: noteID)
+        book.dirty.removeValue(forKey: noteID)
+        if book.tabs.isEmpty {
+            let blank = makeBlankTab(
+                appKey: key,
+                target: active.metadata,
+                identity: active.identity
+            )
+            book.tabs.append(blank)
+            let autosave = makeTabAutosave(for: blank, bundleID: key)
+            autosave.load("")
+            book.autosaves[blank.id] = autosave
+            book.dirty[blank.id] = false
+            selectTabID(blank.id, in: book)
+        } else if book.selectedID == noteID {
+            let next = book.tabs[min(index, book.tabs.count - 1)]
+            selectTabID(next.id, in: book)
+        }
+        refreshSaveError()
+        return true
+    }
+
+    private func makeBlankTab(
+        appKey: String,
+        target: TargetWindowMetadata,
+        identity: WindowIdentityResolver.Identity
+    ) -> WindowNote {
+        WindowNote(
+            identityKey: identity.identityKey,
+            confidence: identity.confidence,
+            bundleIdentifier: appKey,
+            applicationName: target.appName,
+            windowTitle: target.windowTitle ?? "",
+            documentPath: identity.documentPath ?? ""
+        )
+    }
+
+    private func selectTabID(_ noteID: UUID, in book: AppNotebook) {
+        selectTabID(noteID, in: book, touchOpened: true)
+    }
+
+    private func selectTabID(
+        _ noteID: UUID,
+        in book: AppNotebook,
+        touchOpened: Bool
+    ) {
+        guard let tab = book.tabs.first(where: { $0.id == noteID }),
+              let autosave = book.autosaves[noteID] else { return }
+        book.selectedID = noteID
+        if touchOpened {
+            tab.markOpened()
+            if tab.hasContent { book.dirty[noteID] = true }
+        }
+        for session in liveSessions
+        where Self.notebookKey(
+            bundleIdentifier: session.metadata.bundleIdentifier
+        ) == book.bundleID {
+            session.note = tab
+            session.autosave = autosave
+            session.requiresRepositorySave = book.dirty[noteID] ?? false
+        }
+        if let editing = libraryEditing, editing.note.id == noteID {
+            editing.requiresRepositorySave = book.dirty[noteID] ?? false
+        }
+    }
+
+    private func findBookTab(noteID: UUID) -> (AppNotebook, WindowNote)? {
+        for book in appNotebooks.values {
+            if let tab = book.tabs.first(where: { $0.id == noteID }) {
+                return (book, tab)
+            }
+        }
+        return nil
+    }
+
+    /// Mirror a per-note dirty flag onto every owner of that note: the
+    /// notebook entry, all same-app window sessions sharing its autosave,
+    /// and the library editor when it targets the same note.
+    private func markTabDirty(_ value: Bool, noteID: UUID) {
+        for book in appNotebooks.values
+        where book.tabs.contains(where: { $0.id == noteID }) {
+            book.dirty[noteID] = value
+            for session in liveSessions where session.note.id == noteID {
+                session.requiresRepositorySave = value
+            }
+            if let editing = libraryEditing, editing.note.id == noteID {
+                editing.requiresRepositorySave = value
+            }
+        }
+    }
+
+    private func syncBookDirtyFromSession(_ session: LiveSession) {
+        if let key = Self.notebookKey(
+            bundleIdentifier: session.metadata.bundleIdentifier
+        ), let book = appNotebooks[key] {
+            book.dirty[session.note.id] = session.requiresRepositorySave
+        }
+    }
+
+    /// Load the persistent notebook on first use: every existing nonarchived
+    /// row for the bundleIdentifier becomes a tab without rewriting rows.
+    /// Returns nil only when the fetch itself fails.
+    private func ensureNotebook(
+        for appKey: String,
+        makeBlank: () -> WindowNote
+    ) -> AppNotebook? {
+        if let book = appNotebooks[appKey] {
+            if book.tabs.isEmpty {
+                let blank = makeBlank()
+                book.tabs.append(blank)
+                let autosave = makeTabAutosave(for: blank, bundleID: appKey)
+                autosave.load("")
+                book.autosaves[blank.id] = autosave
+                book.dirty[blank.id] = false
+                book.selectedID = blank.id
+            }
+            return book
+        }
+        let book = AppNotebook(bundleID: appKey)
+        do {
+            let stored = try repository.fetchAppNotesThrowing(
+                forBundleIdentifier: appKey
+            )
+            for copy in stored.map({ $0.detachedCopy() }).sorted(by: Self.tabOrder) {
+                book.tabs.append(copy)
+                let autosave = makeTabAutosave(for: copy, bundleID: appKey)
+                autosave.load(copy.noteText)
+                book.autosaves[copy.id] = autosave
+                book.dirty[copy.id] = false
+            }
+            if book.tabs.isEmpty {
+                let blank = makeBlank()
+                book.tabs.append(blank)
+                let autosave = makeTabAutosave(for: blank, bundleID: appKey)
+                autosave.load("")
+                book.autosaves[blank.id] = autosave
+                book.dirty[blank.id] = false
+                book.selectedID = blank.id
+            } else {
+                book.selectedID = Self.pickSelectedID(from: book.tabs)
+                    ?? book.tabs[0].id
+            }
+        } catch {
+            setSaveError(error)
+            return nil
+        }
+        appNotebooks[appKey] = book
+        return book
+    }
+
+    /// Fixed-note autosave shared by every same-app window session selected
+    /// on this note, so same-app windows never run competing writers.
+    private func makeTabAutosave(
+        for note: WindowNote,
+        bundleID: String
+    ) -> AutosaveCoordinator {
+        AutosaveCoordinator(
+            scheduler: schedulerFactory,
+            saveClosure: { [weak self, weak note] text in
+                guard let self, let note else {
+                    return .failure(self?.makeError(
+                        code: 104,
+                        description: L("error.sessionGone")
+                    ) ?? NSError(
+                        domain: "com.verso.autosave",
+                        code: 104,
+                        userInfo: [NSLocalizedDescriptionKey: L("error.sessionGone")]
+                    ))
+                }
+                guard self.repository.isReady else {
+                    let error = self.repository.lastError ?? self.makeError(
+                        code: 105,
+                        description: L("error.storeUnavailable")
+                    )
+                    self.lastSaveError = error
+                    return .failure(error)
+                }
+
+                note.noteText = text
+                note.markUpdated()
+                self.markTabDirty(true, noteID: note.id)
+                let (saved, error) = self.saveRepository(note: note)
+                if saved {
+                    self.markTabDirty(false, noteID: note.id)
+                    return .success
+                }
+
+                let failure = error ?? self.makeError(
+                    code: 106,
+                    description: L("error.saveFailed")
+                )
+                self.lastSaveError = failure
+                return .failure(failure)
+            },
+            saveCompletion: { [weak self] _ in
+                self?.refreshSaveError()
+            }
+        )
+    }
+
+    /// Attach a physical window to its application notebook. Window or
+    /// document changes update front-window metadata only and never switch
+    /// the app notes. Returns nil when a required save failed; the caller
+    /// must then keep the existing editor available.
+    private func beginAppSession(
+        for target: AccessibilityWindowService.ResolvedTargetWindow,
+        appKey: String
+    ) -> String? {
+        if let active = activeSession, isSamePhysicalWindow(active, target) {
+            guard ensureNotebook(for: appKey, makeBlank: {
+                self.makeBlankTab(
+                    appKey: appKey,
+                    target: target.metadata,
+                    identity: active.identity
+                )
+            }) != nil else { return nil }
+            updateAppSession(active, with: target)
+            if let book = appNotebooks[appKey] {
+                pointSession(active, toBook: book)
+            }
+            activeSession = active
+            lastBeginSucceeded = true
+            return active.autosave.currentText
+        }
+
+        if let active = activeSession {
+            guard flush(active) else { return nil }
+            syncBookDirtyFromSession(active)
+            activeSession = nil
+        }
+
+        if let existing = findLiveSession(for: target) {
+            guard ensureNotebook(for: appKey, makeBlank: {
+                self.makeBlankTab(
+                    appKey: appKey,
+                    target: target.metadata,
+                    identity: existing.identity
+                )
+            }) != nil else { return nil }
+            updateAppSession(existing, with: target)
+            if let book = appNotebooks[appKey] {
+                pointSession(existing, toBook: book)
+            }
+            activeSession = existing
+            lastBeginSucceeded = true
+            return existing.autosave.currentText
+        }
+
+        let sessionUUID = UUID()
+        let identity = resolver.resolve(
+            bundleIdentifier: target.metadata.bundleIdentifier,
+            documentPath: target.metadata.documentPath,
+            documentURL: target.metadata.documentURL,
+            windowTitle: target.metadata.windowTitle,
+            sessionID: sessionUUID
+        )
+        guard let book = ensureNotebook(for: appKey, makeBlank: {
+            self.makeBlankTab(
+                appKey: appKey,
+                target: target.metadata,
+                identity: identity
+            )
+        }) else { return nil }
+        guard let selectedID = book.selectedID,
+              let tab = book.tabs.first(where: { $0.id == selectedID }),
+              let autosave = book.autosaves[selectedID] else {
+            setSaveError(makeError(code: 112, description: L("error.saveFailed")))
+            return nil
+        }
+        let session = LiveSession(
+            sessionUUID: sessionUUID,
+            runningApplication: target.runningApplication,
+            axWindow: target.axWindow,
+            axApplication: target.axApplication,
+            evidence: target.evidence,
+            identity: identity,
+            note: tab,
+            metadata: target.metadata
+        )
+        session.requiresRepositorySave = book.dirty[selectedID] ?? false
+        session.autosave = autosave
+        liveSessions.append(session)
+        activeSession = session
+        lastBeginSucceeded = true
+        return session.autosave.currentText
+    }
+
+    private func pointSession(_ session: LiveSession, toBook book: AppNotebook) {
+        guard let selectedID = book.selectedID,
+              let tab = book.tabs.first(where: { $0.id == selectedID }),
+              let autosave = book.autosaves[selectedID] else { return }
+        session.note = tab
+        session.autosave = autosave
+        session.requiresRepositorySave = book.dirty[selectedID] ?? false
+    }
+
+    /// Title/frame changes keep the live binding and the selected note.
+    private func updateAppSession(
+        _ session: LiveSession,
+        with target: AccessibilityWindowService.ResolvedTargetWindow
+    ) {
+        session.metadata = target.metadata
+        if let title = target.metadata.windowTitle, !title.isEmpty {
+            session.note.windowTitle = title
+            session.note.markUpdated()
+            markTabDirty(true, noteID: session.note.id)
+        }
+    }
+
+    /// Remove a tab from every notebook after a successful library
+    /// archive/delete, moving selection to a neighbor or a fresh empty tab.
+    private func removeBookTab(noteID: UUID, prototype: WindowNote?) {
+        for book in appNotebooks.values {
+            guard let index = book.tabs.firstIndex(
+                where: { $0.id == noteID }
+            ) else { continue }
+            book.tabs.remove(at: index)
+            book.autosaves.removeValue(forKey: noteID)
+            book.dirty.removeValue(forKey: noteID)
+            if book.tabs.isEmpty {
+                let blank = WindowNote(
+                    identityKey: prototype?.identityKey ?? book.bundleID,
+                    confidence: prototype?.confidence ?? .sessionOnly,
+                    bundleIdentifier: book.bundleID,
+                    applicationName: prototype?.applicationName ?? "",
+                    windowTitle: prototype?.windowTitle ?? "",
+                    documentPath: prototype?.documentPath ?? ""
+                )
+                book.tabs.append(blank)
+                let autosave = makeTabAutosave(for: blank, bundleID: book.bundleID)
+                autosave.load("")
+                book.autosaves[blank.id] = autosave
+                book.dirty[blank.id] = false
+                selectTabID(blank.id, in: book, touchOpened: false)
+            } else if book.selectedID == noteID {
+                let next = book.tabs[min(index, book.tabs.count - 1)]
+                selectTabID(next.id, in: book, touchOpened: false)
+            }
+        }
+    }
+
+    /// A restored archive rejoins its live notebook in creation order when
+    /// that notebook is already loaded; otherwise the next load picks it up.
+    private func insertRestoredBookTab(_ note: WindowNote) {
+        guard let key = Self.notebookKey(bundleIdentifier: note.bundleIdentifier),
+              let book = appNotebooks[key],
+              !book.tabs.contains(where: { $0.id == note.id }) else { return }
+        book.tabs.append(note)
+        book.tabs.sort(by: Self.tabOrder)
+        let autosave = makeTabAutosave(for: note, bundleID: key)
+        autosave.load(note.noteText)
+        book.autosaves[note.id] = autosave
+        book.dirty[note.id] = false
     }
 
     /// Token-bound editor callback. A dismissed/old editor cannot update the
@@ -334,6 +858,15 @@ final class NoteSessionController {
     ) -> ObservedMetadataResult {
         guard let session = activeSession,
               isSamePhysicalWindow(session, target) else {
+            return .unchanged
+        }
+
+        // APPLICATION grouping: window/document changes update front-window
+        // metadata only and never switch the app notebook.
+        if Self.notebookKey(
+            bundleIdentifier: session.metadata.bundleIdentifier
+        ) != nil {
+            updateAppSession(session, with: target)
             return .unchanged
         }
 
@@ -442,9 +975,22 @@ final class NoteSessionController {
             generation: libraryGeneration
         )
         let liveSession = liveSessions.first { $0.note.id == note.id }
-        let autosave = liveSession?.autosave
-            ?? makeAutosave(for: note, session: nil)
-        if liveSession == nil {
+        // ponytail: an inactive tab reuses its notebook object/autosave so
+        // the library cannot fork a competing draft of the same note.
+        let booked = liveSession == nil ? findBookTab(noteID: note.id) : nil
+        let note = liveSession?.note ?? booked?.1 ?? note.detachedCopy()
+        let autosave: AutosaveCoordinator
+        if let liveSession {
+            autosave = liveSession.autosave
+        } else if let booked, let existing = booked.0.autosaves[booked.1.id] {
+            autosave = existing
+        } else if let booked {
+            let made = makeTabAutosave(for: booked.1, bundleID: booked.0.bundleID)
+            made.load(booked.1.noteText)
+            booked.0.autosaves[booked.1.id] = made
+            autosave = made
+        } else {
+            autosave = makeAutosave(for: note, session: nil)
             autosave.load(note.noteText)
         }
         let editing = LibraryEditing(
@@ -452,7 +998,8 @@ final class NoteSessionController {
             autosave: autosave,
             token: token
         )
-        editing.requiresRepositorySave = liveSession?.requiresRepositorySave ?? false
+        editing.requiresRepositorySave = liveSession?.requiresRepositorySave
+            ?? booked.map({ $0.0.dirty[$0.1.id] ?? false }) ?? false
         libraryEditing = editing
         note.markOpened()
         editing.requiresRepositorySave = true
@@ -476,6 +1023,7 @@ final class NoteSessionController {
         if let live = liveSessions.first(where: { $0.note.id == token.noteID }) {
             live.requiresRepositorySave = true
         }
+        markTabDirty(true, noteID: token.noteID)
         editing.autosave.textDidChange(text)
     }
 
@@ -506,10 +1054,12 @@ final class NoteSessionController {
             if let live = liveSessions.first(where: { $0.note.id == editing.note.id }) {
                 live.requiresRepositorySave = false
             }
+            markTabDirty(false, noteID: editing.note.id)
             refreshSaveError()
             return (true, nil)
         case .failure(let error):
             editing.requiresRepositorySave = true
+            markTabDirty(true, noteID: editing.note.id)
             setSaveError(error)
             return (false, error)
         }
@@ -530,13 +1080,23 @@ final class NoteSessionController {
     }
 
     var libraryEditorToken: LibraryEditorToken? { libraryEditing?.token }
+    var libraryEditorNote: WindowNote? { libraryEditing?.note }
     var libraryEditorText: String? { libraryEditing?.autosave.currentText }
     var hasUnsavedLibraryChanges: Bool { libraryEditing?.hasUnsavedChanges == true }
 
     /// Return the retained AX binding for a note, without validating it.
     /// Callers must use AccessibilityWindowService.refreshTarget before Raise.
+    private func retainedSession(for noteID: UUID) -> LiveSession? {
+        if let (book, _) = findBookTab(noteID: noteID) {
+            return liveSessions.first {
+                Self.notebookKey(bundleIdentifier: $0.metadata.bundleIdentifier) == book.bundleID
+            }
+        }
+        return liveSessions.first { $0.note.id == noteID }
+    }
+
     func liveTarget(for noteID: UUID) -> AccessibilityWindowService.ResolvedTargetWindow? {
-        guard let session = liveSessions.first(where: { $0.note.id == noteID }) else {
+        guard let session = retainedSession(for: noteID) else {
             return nil
         }
         return AccessibilityWindowService.ResolvedTargetWindow(
@@ -555,10 +1115,14 @@ final class NoteSessionController {
         noteID: UUID,
         target: AccessibilityWindowService.ResolvedTargetWindow
     ) -> Bool {
-        guard let session = liveSessions.first(where: { $0.note.id == noteID }),
+        guard let session = retainedSession(for: noteID),
               session.runningApplication.isEqual(target.runningApplication),
               CFEqual(session.axWindow, target.axWindow) else {
             return false
+        }
+
+        if let (book, _) = findBookTab(noteID: noteID) {
+            return Self.notebookKey(bundleIdentifier: target.metadata.bundleIdentifier) == book.bundleID
         }
 
         let incoming = resolver.resolve(
@@ -614,7 +1178,7 @@ final class NoteSessionController {
         editing.note.pinned.toggle()
         editing.note.markUpdated()
         editing.requiresRepositorySave = true
-        let (saved, error) = saveRepository()
+        let (saved, error) = saveRepository(note: editing.note)
         guard saved else {
             editing.note.pinned = oldPinned
             editing.note.updatedAt = oldUpdatedAt
@@ -627,6 +1191,7 @@ final class NoteSessionController {
         if let live = liveSessions.first(where: { $0.note.id == noteID }) {
             live.requiresRepositorySave = false
         }
+        markTabDirty(false, noteID: noteID)
         refreshSaveError()
         return (true, nil)
     }
@@ -655,7 +1220,7 @@ final class NoteSessionController {
         editing.note.archived = true
         editing.note.markUpdated()
         editing.requiresRepositorySave = true
-        let (saved, error) = saveRepository()
+        let (saved, error) = saveRepository(note: editing.note)
         guard saved else {
             editing.note.archived = oldArchived
             editing.note.updatedAt = oldUpdatedAt
@@ -668,6 +1233,7 @@ final class NoteSessionController {
         editing.requiresRepositorySave = false
         _ = endLibraryEditing(token: token)
         if let live { removeLiveSession(live) }
+        removeBookTab(noteID: noteID, prototype: editing.note)
         refreshSaveError()
         return (true, nil)
     }
@@ -695,7 +1261,7 @@ final class NoteSessionController {
         editing.note.archived = false
         editing.note.markUpdated()
         editing.requiresRepositorySave = true
-        let (saved, error) = saveRepository()
+        let (saved, error) = saveRepository(note: editing.note)
         guard saved else {
             editing.note.archived = oldArchived
             editing.note.updatedAt = oldUpdatedAt
@@ -706,6 +1272,7 @@ final class NoteSessionController {
 
         editing.requiresRepositorySave = false
         _ = endLibraryEditing(token: token)
+        insertRestoredBookTab(editing.note)
         refreshSaveError()
         return (true, nil)
     }
@@ -733,7 +1300,13 @@ final class NoteSessionController {
         }
 
         let live = liveSessions.first(where: { $0.note.id == noteID })
-        repository.delete(editing.note)
+        do {
+            try repository.delete(editing.note)
+        } catch {
+            editing.requiresRepositorySave = true
+            setSaveError(error)
+            return (false, error)
+        }
         let (saved, error) = saveRepository()
         guard saved else {
             repository.rollbackFailedDeletion()
@@ -750,6 +1323,7 @@ final class NoteSessionController {
         }
         _ = endLibraryEditing(token: token)
         if let live { removeLiveSession(live) }
+        removeBookTab(noteID: noteID, prototype: editing.note)
         refreshSaveError()
         return (true, nil)
     }
@@ -784,6 +1358,7 @@ final class NoteSessionController {
         )
         session.note.markUpdated()
         session.requiresRepositorySave = true
+        markTabDirty(true, noteID: session.note.id)
     }
 
     // MARK: - Pin/archive
@@ -804,16 +1379,19 @@ final class NoteSessionController {
         session.note.pinned.toggle()
         session.note.markUpdated()
         session.requiresRepositorySave = true
-        let (saved, error) = saveRepository()
+        markTabDirty(true, noteID: session.note.id)
+        let (saved, error) = saveRepository(note: session.note)
         guard saved else {
             session.note.pinned = oldPinned
             session.note.updatedAt = oldUpdatedAt
             session.requiresRepositorySave = true
+            markTabDirty(true, noteID: session.note.id)
             setSaveError(error)
             return (false, error)
         }
 
         session.requiresRepositorySave = false
+        markTabDirty(false, noteID: session.note.id)
         refreshSaveError()
         return (true, nil)
     }
@@ -832,7 +1410,7 @@ final class NoteSessionController {
         session.note.archived = true
         session.note.markUpdated()
         session.requiresRepositorySave = true
-        let (saved, error) = saveRepository()
+        let (saved, error) = saveRepository(note: session.note)
         guard saved else {
             session.note.archived = oldArchived
             session.note.updatedAt = oldUpdatedAt
@@ -842,6 +1420,8 @@ final class NoteSessionController {
         }
 
         session.requiresRepositorySave = false
+        markTabDirty(false, noteID: session.note.id)
+        removeBookTab(noteID: session.note.id, prototype: session.note)
         removeLiveSession(session)
         activeSession = nil
         refreshSaveError()
@@ -864,6 +1444,21 @@ final class NoteSessionController {
         }
         if let active = activeSession, stale.contains(where: { $0 === active }) {
             activeSession = nil
+        }
+        if let key = Self.notebookKey(
+            bundleIdentifier: application.bundleIdentifier
+        ), let book = appNotebooks[key] {
+            for (id, autosave) in book.autosaves {
+                if book.dirty[id] == true || autosave.isDirty {
+                    switch autosave.forceFlush() {
+                    case .success:
+                        markTabDirty(false, noteID: id)
+                    case .failure(let error):
+                        markTabDirty(true, noteID: id)
+                        setSaveError(error)
+                    }
+                }
+            }
         }
         refreshSaveError()
     }
@@ -895,8 +1490,28 @@ final class NoteSessionController {
                 if !flush(session) { allSucceeded = false }
             }
         }
+        for book in appNotebooks.values {
+            for (id, autosave) in book.autosaves {
+                let identifier = ObjectIdentifier(autosave)
+                guard handledAutosaves.insert(identifier).inserted else {
+                    continue
+                }
+                if book.dirty[id] == true || autosave.isDirty {
+                    switch autosave.forceFlush() {
+                    case .success:
+                        markTabDirty(false, noteID: id)
+                    case .failure(let error):
+                        markTabDirty(true, noteID: id)
+                        setSaveError(error)
+                        allSucceeded = false
+                    }
+                } else {
+                    markTabDirty(false, noteID: id)
+                }
+            }
+        }
         for (id, draft) in Array(recoveryDrafts) {
-            // Recovery also owns unsaved metadata and newly inserted empty notes.
+            // Recovery also owns unsaved metadata and detached editor drafts.
             let identifier = ObjectIdentifier(draft.autosave)
             if handledAutosaves.insert(identifier).inserted {
                 switch draft.autosave.forceFlush() {
@@ -920,9 +1535,14 @@ final class NoteSessionController {
             // A store that never opened has no notes to lose. If dirty live or
             // library or recovery models exist, termination must still be
             // cancelled.
+            let booksClean = !appNotebooks.values.contains(where: { book in
+                book.dirty.values.contains(true)
+                    || book.autosaves.values.contains(where: { $0.isDirty })
+            })
             return liveSessions.isEmpty
                 && recoveryDrafts.isEmpty
                 && libraryEditing == nil
+                && booksClean
         }
 
         var allSucceeded = true
@@ -939,6 +1559,26 @@ final class NoteSessionController {
             let identifier = ObjectIdentifier(session.autosave)
             if handledAutosaves.insert(identifier).inserted {
                 if !flush(session) { allSucceeded = false }
+            }
+        }
+        for book in appNotebooks.values {
+            for (id, autosave) in book.autosaves {
+                let identifier = ObjectIdentifier(autosave)
+                guard handledAutosaves.insert(identifier).inserted else {
+                    continue
+                }
+                if book.dirty[id] == true || autosave.isDirty {
+                    switch autosave.forceFlush() {
+                    case .success:
+                        markTabDirty(false, noteID: id)
+                    case .failure(let error):
+                        markTabDirty(true, noteID: id)
+                        setSaveError(error)
+                        allSucceeded = false
+                    }
+                } else {
+                    markTabDirty(false, noteID: id)
+                }
             }
         }
         for (id, draft) in Array(recoveryDrafts) {
@@ -1026,9 +1666,10 @@ final class NoteSessionController {
             guard candidates.count == 1, let candidate = candidates.first else {
                 return .note(nil)
             }
-            guard !isReservedOrReleaseDead(candidate) else { return .note(nil) }
-            candidate.markOpened()
-            return .note(candidate)
+            guard !isReservedOrReleaseDead(candidate.id) else { return .note(nil) }
+            // Flushing a dead window may have removed its newly emptied row.
+            let current = try repository.fetchActiveNotesThrowing(forKey: identity.identityKey)
+            return .note(current.count == 1 ? current.first : nil)
         } catch {
             return .failure(error)
         }
@@ -1037,8 +1678,8 @@ final class NoteSessionController {
     /// Validate only the live reservation for this candidate. A dead AX
     /// reference may be released lazily; hidden/minimized and ambiguous AX
     /// results remain reserved so a transient state cannot merge notes.
-    private func isReservedOrReleaseDead(_ note: WindowNote) -> Bool {
-        if let session = liveSessions.first(where: { $0.note.id == note.id }) {
+    private func isReservedOrReleaseDead(_ noteID: UUID) -> Bool {
+        if let session = liveSessions.first(where: { $0.note.id == noteID }) {
             switch reservationLiveness(session.runningApplication, session.axWindow) {
             case .alive, .unknown:
                 return true
@@ -1048,11 +1689,11 @@ final class NoteSessionController {
                 if needsRecovery { retainRecovery(for: session) }
                 removeLiveSession(session)
                 return needsRecovery
-                    || recoveryDrafts.values.contains { $0.note.id == note.id }
+                    || recoveryDrafts.values.contains { $0.note.id == noteID }
             }
         }
 
-        return recoveryDrafts.values.contains { $0.note.id == note.id }
+        return recoveryDrafts.values.contains { $0.note.id == noteID }
     }
 
     private func makeNewNote(
@@ -1067,7 +1708,6 @@ final class NoteSessionController {
             windowTitle: target.metadata.windowTitle ?? "",
             documentPath: identity.documentPath ?? ""
         )
-        repository.insert(note)
         return note
     }
 
@@ -1104,7 +1744,7 @@ final class NoteSessionController {
                    editing.note.id == note.id {
                     editing.requiresRepositorySave = true
                 }
-                let (saved, error) = self.saveRepository()
+                let (saved, error) = self.saveRepository(note: note)
                 if saved {
                     session?.requiresRepositorySave = false
                     if let editing = self.libraryEditing,
@@ -1131,6 +1771,7 @@ final class NoteSessionController {
         session.note.noteText = text
         session.note.markUpdated()
         session.requiresRepositorySave = true
+        markTabDirty(true, noteID: session.note.id)
         session.autosave.textDidChange(text)
     }
 
@@ -1142,10 +1783,12 @@ final class NoteSessionController {
             if let live = liveSessions.first(where: { $0.note.id == editing.note.id }) {
                 live.requiresRepositorySave = false
             }
+            markTabDirty(false, noteID: editing.note.id)
             refreshSaveError()
             return true
         case .failure(let error):
             editing.requiresRepositorySave = true
+            markTabDirty(true, noteID: editing.note.id)
             setSaveError(error)
             return false
         }
@@ -1170,10 +1813,12 @@ final class NoteSessionController {
         switch session.autosave.forceFlush() {
         case .success:
             session.requiresRepositorySave = false
+            markTabDirty(false, noteID: session.note.id)
             refreshSaveError()
             return true
         case .failure(let error):
             session.requiresRepositorySave = true
+            markTabDirty(true, noteID: session.note.id)
             lastSaveError = error
             refreshSaveError()
             return false
@@ -1196,6 +1841,8 @@ final class NoteSessionController {
     private func refreshSaveError() {
         let error = repository.lastError
             ?? liveSessions.compactMap({ $0.autosave.lastError }).first
+            ?? appNotebooks.values.flatMap({ $0.autosaves.values })
+                .compactMap({ $0.lastError }).first
             ?? libraryEditing?.autosave.lastError
             ?? recoveryDrafts.values.compactMap({ $0.autosave.lastError }).first
         setSaveError(error)
@@ -1214,8 +1861,11 @@ final class NoteSessionController {
         )
     }
 
-    private func saveRepository() -> (Bool, Error?) {
-        repositorySaveOverride?() ?? repository.save()
+    private func saveRepository(note: WindowNote? = nil) -> (Bool, Error?) {
+        if let note {
+            return repository.saveDraft(note, save: repositorySaveOverride)
+        }
+        return repositorySaveOverride?() ?? repository.save()
     }
 
     private static let defaultReservationLiveness: ReservationLivenessCheck = {

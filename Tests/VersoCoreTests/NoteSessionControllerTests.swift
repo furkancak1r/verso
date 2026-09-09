@@ -53,7 +53,71 @@ struct NoteSessionControllerTests {
         )
     }
 
-    @Test("Two live windows with one exact path receive separate notes")
+    @Test("Untouched and whitespace-only sessions create no stored or recovery notes")
+    func emptySessionsStayInMemory() throws {
+        let (controller, repository) = controller()
+        let target = target(axWindow: AXUIElementCreateApplication(getpid()))
+        #expect(controller.beginSessionIfPossible(for: target) == "")
+        let firstID = try #require(controller.activeSessionUUID)
+        controller.closeSession(for: firstID)
+        #expect(controller.recoveryDraftCount == 0)
+        #expect(try repository.fetchActiveNotesThrowing().isEmpty)
+
+        #expect(controller.beginSessionIfPossible(for: target) == "")
+        let draft = try #require(controller.activeSession?.note)
+        #expect(draft.modelContext == nil)
+        controller.updateActiveTitle("Still blank")
+        #expect(controller.commitAndSave(editorText: " \n\t ").0)
+        #expect(controller.forceSaveAll())
+        #expect(try repository.fetchActiveNotesThrowing().isEmpty)
+        #expect(controller.commitAndSave(editorText: "  İçerik ✅  ").0)
+        #expect(try repository.fetchActiveNotesThrowing().map(\.id) == [draft.id])
+        #expect(controller.commitAndSave(editorText: "").0)
+        #expect(try repository.fetchActiveNotesThrowing().isEmpty)
+        #expect(controller.activeSession?.note === draft)
+        #expect(controller.commitAndSave(editorText: "  İçerik ✅  ").0)
+        let restored = try #require(repository.fetchActiveNotesThrowing().first)
+        #expect(restored.id == draft.id)
+        #expect(restored.noteText == "  İçerik ✅  ")
+        #expect(restored.windowTitle == "Still blank")
+    }
+
+    // ponytail: APPLICATION grouping supersedes per-window reservation splits
+    // for identified apps: same-app windows share one tab even when the AX
+    // reservation reads dead, and the pending clear stays a shared draft.
+    @Test("Same-app windows share one tab even when the reservation reads dead", arguments: [false, true])
+    func deadClearedReservation(failClear: Bool) throws {
+        let repository = NoteRepository()
+        var fail = false
+        let error = NSError(domain: "VersoTests", code: 25)
+        let sessions = NoteSessionController(
+            repository: repository, schedulerFactory: { _, _ in nil },
+            reservationLiveness: { _, _ in .dead },
+            repositorySave: { fail ? (false, error) : repository.save() }
+        )
+        #expect(sessions.openStore(inMemory: true))
+        let first = target(axWindow: AXUIElementCreateApplication(getpid()))
+        let second = target(axWindow: AXUIElementCreateSystemWide())
+        #expect(sessions.beginSessionIfPossible(for: first) == "")
+        #expect(sessions.commitAndSave(editorText: "Saved before closing").0)
+        let oldID = try #require(sessions.activeSession?.note.id)
+        sessions.editorTextDidChange("")
+        sessions.endActiveSession()
+        fail = failClear
+        #expect(sessions.beginSessionIfPossible(for: second) == "")
+        #expect(sessions.activeSession?.note.id == oldID)
+        #expect(sessions.activeLiveSessionCount == 2)
+        #expect(sessions.recoveryDraftCount == 0)
+        #expect(try repository.fetchActiveNotesThrowing().count == 1)
+        fail = false
+        #expect(sessions.retryPendingSaves())
+        #expect(sessions.recoveryDraftCount == 0)
+        #expect(try repository.fetchActiveNotesThrowing().isEmpty)
+    }
+
+    // ponytail: APPLICATION grouping supersedes per-window identity: two live
+    // windows of one app share a single note.
+    @Test("Two live windows of one app share a single note")
     func samePathLiveCollision() {
         let (controller, repository) = controller()
         let pid = NSRunningApplication.current.processIdentifier
@@ -64,18 +128,24 @@ struct NoteSessionControllerTests {
         #expect(controller.commitAndSave(editorText: "window one").0)
         controller.endActiveSession()
 
-        #expect(controller.beginSessionIfPossible(for: secondTarget) == "")
+        #expect(controller.beginSessionIfPossible(for: secondTarget) == "window one")
+        #expect(controller.activeTabNotes.count == 1)
         let key = controller.resolver.resolve(
             bundleIdentifier: firstTarget.metadata.bundleIdentifier,
             documentPath: firstTarget.metadata.documentPath,
             documentURL: nil,
             windowTitle: firstTarget.metadata.windowTitle
         ).identityKey
-        #expect(repository.fetchActiveNotes(forKey: key).count == 2)
+        #expect(repository.fetchActiveNotes(forKey: key).count == 1)
+        #expect(controller.commitAndSave(editorText: "window two").0)
+        #expect(repository.fetchActiveNotes(forKey: key).count == 1)
+        #expect(repository.fetchActiveNotes(forKey: key).first?.noteText == "window two")
         #expect(controller.activeLiveSessionCount == 2)
     }
 
-    @Test("A proven-dead reservation is released lazily for exact restore")
+    // ponytail: APPLICATION grouping supersedes lazy reservation release for
+    // identified apps; the second window joins the shared tab instead.
+    @Test("Same-app windows join the shared tab instead of releasing it")
     func deadReservationIsReleased() {
         let (controller, repository) = controller(
             reservationLiveness: { _, _ in .dead }
@@ -89,7 +159,8 @@ struct NoteSessionControllerTests {
         controller.endActiveSession()
 
         #expect(controller.beginSessionIfPossible(for: second) == "released note")
-        #expect(controller.activeLiveSessionCount == 1)
+        #expect(controller.activeLiveSessionCount == 2)
+        #expect(controller.activeTabNotes.count == 1)
         let key = controller.resolver.resolve(
             bundleIdentifier: first.metadata.bundleIdentifier,
             documentPath: first.metadata.documentPath,
@@ -100,7 +171,9 @@ struct NoteSessionControllerTests {
         #expect(controller.recoveryDraftCount == 0)
     }
 
-    @Test("An ambiguous reservation liveness result stays reserved")
+    // ponytail: APPLICATION grouping supersedes reservation checks for
+    // identified apps; sharing never consults AX liveness.
+    @Test("Same-app sharing does not consult reservation liveness")
     func ambiguousReservationStaysReserved() {
         var checks = 0
         let (controller, repository) = controller(
@@ -117,16 +190,20 @@ struct NoteSessionControllerTests {
         #expect(controller.commitAndSave(editorText: "reserved note").0)
         controller.endActiveSession()
 
-        #expect(controller.beginSessionIfPossible(for: second) == "")
-        #expect(checks == 1)
+        #expect(controller.beginSessionIfPossible(for: second) == "reserved note")
+        #expect(checks == 0)
         #expect(controller.activeLiveSessionCount == 2)
+        #expect(controller.activeTabNotes.count == 1)
         let key = controller.resolver.resolve(
             bundleIdentifier: first.metadata.bundleIdentifier,
             documentPath: first.metadata.documentPath,
             documentURL: nil,
             windowTitle: first.metadata.windowTitle
         ).identityKey
-        #expect(repository.fetchActiveNotes(forKey: key).count == 2)
+        #expect(repository.fetchActiveNotes(forKey: key).count == 1)
+        #expect(controller.commitAndSave(editorText: "separate draft").0)
+        #expect(repository.fetchActiveNotes(forKey: key).count == 1)
+        #expect(repository.fetchActiveNotes(forKey: key).first?.noteText == "separate draft")
     }
 
     @Test("Browser title changes retain one live note for one AX window")
@@ -166,7 +243,9 @@ struct NoteSessionControllerTests {
         #expect(repository.fetchActiveNotes(forKey: key).count == 1)
     }
 
-    @Test("Saved exact notes restore only when the candidate is unique", arguments: [1, 2])
+    // ponytail: APPLICATION grouping supersedes identity-key uniqueness: every
+    // existing nonarchived app note loads as a tab; no bulk rewrite happens.
+    @Test("Existing app notes all load as tabs without rewriting", arguments: [1, 2])
     func persistedCandidateUniqueness(candidateCount: Int) {
         let (controller, repository) = controller()
         let target = target(axWindow: AXUIElementCreateApplication(getpid()))
@@ -184,8 +263,14 @@ struct NoteSessionControllerTests {
             ))
         }
         #expect(repository.save().0)
-        #expect(controller.beginSessionIfPossible(for: target) == (candidateCount == 1 ? "saved 0" : ""))
-        #expect(repository.fetchActiveNotes(forKey: identity.identityKey).count == (candidateCount == 1 ? 1 : 3))
+        if candidateCount == 1 {
+            #expect(controller.beginSessionIfPossible(for: target) == "saved 0")
+        } else {
+            let text = controller.beginSessionIfPossible(for: target)
+            #expect(text == "saved 0" || text == "saved 1")
+        }
+        #expect(controller.activeTabNotes.count == candidateCount)
+        #expect(repository.fetchActiveNotes(forKey: identity.identityKey).count == candidateCount)
     }
 
     @Test("Retry flushes a metadata-only recovery draft after its live session is released")
@@ -193,6 +278,8 @@ struct NoteSessionControllerTests {
         let (controller, _) = controller()
         let target = target(axWindow: AXUIElementCreateApplication(getpid()))
         #expect(controller.beginSessionIfPossible(for: target) == "")
+        #expect(controller.commitAndSave(editorText: "Saved note").0)
+        controller.updateActiveTitle("Updated title")
         let sessionID = try #require(controller.activeSessionUUID)
         controller.closeSession(for: sessionID)
         #expect(controller.activeLiveSessionCount == 0)
@@ -201,7 +288,9 @@ struct NoteSessionControllerTests {
         #expect(controller.recoveryDraftCount == 0)
     }
 
-    @Test("An exact document change on one AX window preserves A and opens B")
+    // ponytail: APPLICATION grouping supersedes per-document notes: a document
+    // change on one window keeps the selected app note.
+    @Test("A document change on one window keeps the app note")
     func documentChange() {
         let (controller, repository) = controller()
         let ax = AXUIElementCreateApplication(
@@ -220,8 +309,9 @@ struct NoteSessionControllerTests {
         let firstSession = controller.activeSessionUUID
         #expect(controller.commitAndSave(editorText: "note A").0)
 
-        #expect(controller.beginSessionIfPossible(for: second) == "")
-        #expect(controller.activeSessionUUID != firstSession)
+        #expect(controller.beginSessionIfPossible(for: second) == "note A")
+        #expect(controller.activeSessionUUID == firstSession)
+        #expect(controller.activeTabNotes.count == 1)
         let savedA = repository.fetchActiveNotes(
             forKey: firstIdentity.identityKey
         )
@@ -251,16 +341,21 @@ struct NoteSessionControllerTests {
         #expect(oldSession != secondSession)
 
         controller.editorTextDidChange("stale", sessionID: oldSession)
+        #expect(controller.activeSession?.note.noteText == "")
         #expect(controller.commitAndSave(editorText: "current").0)
-        let key = controller.resolver.resolve(
-            bundleIdentifier: second.metadata.bundleIdentifier,
-            documentPath: second.metadata.documentPath,
+        #expect(controller.activeSession?.note.noteText == "current")
+        // ponytail: the shared tab keeps its creation identity; it is not
+        // re-keyed to the second window's document.
+        let firstKey = controller.resolver.resolve(
+            bundleIdentifier: first.metadata.bundleIdentifier,
+            documentPath: first.metadata.documentPath,
             documentURL: nil,
-            windowTitle: second.metadata.windowTitle
+            windowTitle: first.metadata.windowTitle
         ).identityKey
-        let notes = repository.fetchActiveNotes(forKey: key)
+        let notes = repository.fetchActiveNotes(forKey: firstKey)
         #expect(notes.count == 1)
-        #expect(notes[0].noteText == "current")
+        #expect(notes.first?.noteText == "current")
+        #expect(controller.activeTabNotes.count == 1)
     }
 
     @Test("An initially untitled live draft is not replaced when a path appears")
@@ -483,5 +578,267 @@ struct NoteSessionControllerTests {
         controller.editorTextDidChange("updated draft")
         callbacks.last?()
         #expect(hasError.last == false)
+    }
+
+    @Test("Different apps keep isolated notebooks and selections")
+    func differentAppsIsolated() throws {
+        let (controller, _) = controller()
+        let pid = NSRunningApplication.current.processIdentifier
+        let appA = target(
+            axWindow: AXUIElementCreateApplication(pid),
+            bundleIdentifier: "com.example.app-a", title: "A", path: "/tmp/A.md"
+        )
+        let appB = target(
+            axWindow: AXUIElementCreateSystemWide(),
+            bundleIdentifier: "com.example.app-b", title: "B", path: "/tmp/B.md"
+        )
+        #expect(controller.beginSessionIfPossible(for: appA) == "")
+        #expect(controller.commitAndSave(editorText: "note A").0)
+        #expect(controller.beginSessionIfPossible(for: appB) == "")
+        #expect(controller.commitAndSave(editorText: "note B").0)
+        #expect(controller.activeTabNotes.count == 1)
+        #expect(controller.activeTabNotes.first?.noteText == "note B")
+        #expect(controller.beginSessionIfPossible(for: appA) == "note A")
+        #expect(controller.activeSession?.note.noteText == "note A")
+        #expect(controller.activeTabNotes.first?.noteText == "note A")
+    }
+
+    @Test("Unidentified apps never merge into one empty-ID notebook")
+    func unidentifiedAppsIsolated() throws {
+        let (controller, repository) = controller()
+        let pid = NSRunningApplication.current.processIdentifier
+        let first = target(
+            axWindow: AXUIElementCreateApplication(pid),
+            bundleIdentifier: "", title: "Draft", path: "/tmp/Draft.md"
+        )
+        let second = target(
+            axWindow: AXUIElementCreateSystemWide(),
+            bundleIdentifier: "", title: "Draft", path: "/tmp/Draft.md"
+        )
+        #expect(controller.beginSessionIfPossible(for: first) == "")
+        #expect(controller.commitAndSave(editorText: "window one").0)
+        controller.endActiveSession()
+        #expect(controller.beginSessionIfPossible(for: second) == "")
+        #expect(controller.activeTabNotes.isEmpty)
+        #expect(controller.commitAndSave(editorText: "window two").0)
+        #expect(try repository.fetchActiveNotesThrowing().count == 2)
+    }
+
+    @Test("Existing app notes migrate as tabs in creation order with last-used selection")
+    func existingNotesMigration() throws {
+        let (controller, repository) = controller()
+        let base = Date(timeIntervalSince1970: 1_700_000_000)
+        let oldest = WindowNote(
+            identityKey: "legacy-a", confidence: .exact,
+            bundleIdentifier: "com.example.editor", applicationName: "Editor",
+            noteText: "oldest", createdAt: base,
+            updatedAt: base, lastOpenedAt: base
+        )
+        let newest = WindowNote(
+            identityKey: "legacy-b", confidence: .exact,
+            bundleIdentifier: "com.example.editor", applicationName: "Editor",
+            noteText: "newest", createdAt: base.addingTimeInterval(20),
+            updatedAt: base.addingTimeInterval(20),
+            lastOpenedAt: base.addingTimeInterval(30)
+        )
+        let middle = WindowNote(
+            identityKey: "legacy-c", confidence: .exact,
+            bundleIdentifier: "com.example.editor", applicationName: "Editor",
+            noteText: "middle", createdAt: base.addingTimeInterval(10),
+            updatedAt: base.addingTimeInterval(10),
+            lastOpenedAt: base.addingTimeInterval(60)
+        )
+        let otherApp = WindowNote(
+            identityKey: "legacy-x", confidence: .exact,
+            bundleIdentifier: "com.example.other", applicationName: "Other",
+            noteText: "other"
+        )
+        let archived = WindowNote(
+            identityKey: "legacy-z", confidence: .exact,
+            bundleIdentifier: "com.example.editor", applicationName: "Editor",
+            noteText: "gone", archived: true
+        )
+        for note in [oldest, newest, middle, otherApp, archived] {
+            repository.insert(note)
+        }
+        #expect(repository.save().0)
+        let window = target(axWindow: AXUIElementCreateApplication(getpid()))
+        #expect(controller.beginSessionIfPossible(for: window) == "middle")
+        let tabs = controller.activeTabNotes
+        #expect(tabs.map(\.noteText) == ["oldest", "middle", "newest"])
+        #expect(controller.activeSession?.note.noteText == "middle")
+        #expect(tabs.allSatisfy({ $0.bundleIdentifier == "com.example.editor" }))
+        #expect(try repository.fetchAppNotesThrowing(forBundleIdentifier: "com.example.editor").count == 3)
+    }
+
+    @Test("Tab roundtrip: add, select, archive-on-close, blank discard, last close renews")
+    func tabRoundtrip() throws {
+        let (controller, repository) = controller()
+        let window = target(axWindow: AXUIElementCreateApplication(getpid()))
+        #expect(controller.beginSessionIfPossible(for: window) == "")
+        #expect(controller.commitAndSave(editorText: "first").0)
+        let firstID = try #require(controller.activeSession?.note.id)
+        #expect(controller.addTab(editorText: "first"))
+        #expect(controller.activeTabNotes.count == 2)
+        #expect(controller.activeSession?.note.noteText == "")
+        #expect(controller.commitAndSave(editorText: "second").0)
+        let secondID = try #require(controller.activeSession?.note.id)
+        #expect(secondID != firstID)
+        #expect(controller.selectTab(noteID: firstID, editorText: "second"))
+        #expect(controller.activeSession?.note.noteText == "first")
+        #expect(controller.selectTab(noteID: secondID, editorText: "first"))
+        // Closing the nonblank first tab archives it and keeps the second.
+        #expect(controller.closeTab(noteID: firstID, editorText: "second"))
+        #expect(controller.activeTabNotes.map(\.id) == [secondID])
+        #expect(try repository.fetchAppNotesThrowing(forBundleIdentifier: "com.example.editor").count == 1)
+        #expect(repository.fetchArchivedNotes().contains { $0.id == firstID && $0.noteText == "first" })
+        // Closing the blank-then-last tab discards and renews one empty tab.
+        #expect(controller.commitAndSave(editorText: "").0)
+        #expect(try repository.fetchAppNotesThrowing(forBundleIdentifier: "com.example.editor").isEmpty)
+        let blankID = try #require(controller.activeSession?.note.id)
+        #expect(controller.closeTab(noteID: blankID, editorText: ""))
+        #expect(controller.activeTabNotes.count == 1)
+        #expect(controller.activeSession?.note.noteText == "")
+        #expect(controller.activeSession?.note.id != blankID)
+    }
+
+    @Test("Failed tab switch and close preserve current text and selection")
+    func failedTabSwitchPreservesCurrent() throws {
+        let repository = NoteRepository()
+        var shouldFail = false
+        let failure = NSError(domain: "VersoTests", code: 31)
+        let controller = NoteSessionController(
+            repository: repository, schedulerFactory: { _, _ in nil },
+            reservationLiveness: { _, _ in .alive },
+            repositorySave: {
+                shouldFail ? (false, failure) : repository.save()
+            }
+        )
+        #expect(controller.openStore(inMemory: true))
+        let window = target(axWindow: AXUIElementCreateApplication(getpid()))
+        #expect(controller.beginSessionIfPossible(for: window) == "")
+        #expect(controller.commitAndSave(editorText: "first").0)
+        let firstID = try #require(controller.activeSession?.note.id)
+        #expect(controller.addTab(editorText: "first"))
+        #expect(controller.commitAndSave(editorText: "second").0)
+        let secondID = try #require(controller.activeSession?.note.id)
+        shouldFail = true
+        #expect(!controller.selectTab(noteID: firstID, editorText: "second edited"))
+        #expect(controller.activeSession?.note.id == secondID)
+        #expect(controller.activeSession?.note.noteText == "second edited")
+        #expect(!controller.addTab(editorText: "second edited"))
+        #expect(controller.activeTabNotes.count == 2)
+        #expect(controller.activeSession?.note.id == secondID)
+        #expect(!controller.closeTab(noteID: firstID, editorText: "second edited"))
+        #expect(controller.activeTabNotes.count == 2)
+        #expect(controller.activeSession?.note.id == secondID)
+        shouldFail = false
+        #expect(controller.selectTab(noteID: firstID, editorText: "second edited"))
+        #expect(controller.activeSession?.note.noteText == "first")
+    }
+
+    @Test("Inactive tabs are saved, recovered, and library-edited without touching the active note")
+    func inactiveTabCoverage() throws {
+        let (controller, repository) = controller()
+        let window = target(axWindow: AXUIElementCreateApplication(getpid()))
+        #expect(controller.beginSessionIfPossible(for: window) == "")
+        #expect(controller.commitAndSave(editorText: "active one").0)
+        #expect(controller.addTab(editorText: "active one"))
+        #expect(controller.commitAndSave(editorText: "inactive draft").0)
+        let tabs = controller.activeTabNotes
+        #expect(tabs.count == 2)
+        let inactiveID = try #require(tabs.first?.id)
+        let activeID = try #require(controller.activeSession?.note.id)
+        #expect(inactiveID != activeID)
+        // Background saves cover the inactive tab while the active note stays.
+        controller.editorTextDidChange("active two")
+        #expect(controller.forceSaveAll())
+        #expect(controller.activeSession?.note.noteText == "active two")
+        let stored = try repository.fetchAppNotesThrowing(forBundleIdentifier: "com.example.editor")
+        #expect(Set(stored.map(\.noteText)) == ["active one", "active two"])
+        // Library edits target the inactive tab by fixed ID.
+        controller.endActiveSession()
+        let start = try #require(controller.beginLibraryEditing(for: tabs[0]))
+        controller.libraryEditorTextDidChange("inactive edited", token: start.token)
+        #expect(controller.commitLibraryEditorAndSave(editorText: "inactive edited", token: start.token).0)
+        #expect(controller.endLibraryEditing(token: start.token))
+        #expect(controller.beginSessionIfPossible(for: window) == "active two")
+        #expect(controller.selectTab(noteID: inactiveID, editorText: "active two"))
+        #expect(controller.activeSession?.note.noteText == "inactive edited")
+    }
+}
+
+extension NoteSessionControllerTests {
+    @Test("Archive write failure keeps the tab, pin metadata and current selection")
+    func failedTabArchiveMetadata() throws {
+        let repository = NoteRepository()
+        var writes = 0, failAt = Int.max
+        let controller = NoteSessionController(repository: repository,
+            schedulerFactory: { _, _ in nil }, reservationLiveness: { _, _ in .alive },
+            repositorySave: {
+                writes += 1
+                return writes == failAt ? (false, NSError(domain: "SyntheticArchiveFailure", code: 1)) : repository.save()
+            })
+        #expect(controller.openStore(inMemory: true))
+        #expect(controller.beginSessionIfPossible(for: target(axWindow: AXUIElementCreateApplication(getpid()))) == "")
+        #expect(controller.commitAndSave(editorText: "first").0)
+        #expect(controller.toggleActiveNotePin(editorText: "first").0)
+        let first = try #require(controller.activeSession?.note.id)
+        #expect(controller.addTab(editorText: "first"))
+        #expect(controller.commitAndSave(editorText: "second").0)
+        let second = try #require(controller.activeSession?.note.id)
+        failAt = writes + 2 // active text saves, then the archive metadata write fails
+        #expect(!controller.closeTab(noteID: first, editorText: "second"))
+        #expect(controller.activeSession?.note.id == second)
+        #expect(controller.activeTabNotes.count == 2)
+        let retained = try #require(controller.activeTabNotes.first { $0.id == first })
+        #expect(!retained.archived && retained.pinned && retained.noteText == "first")
+        failAt = Int.max
+        #expect(controller.closeTab(noteID: first, editorText: "second"))
+        #expect(repository.fetchArchivedNotes().contains { $0.id == first && $0.pinned })
+    }
+
+    @Test("Inactive app tab targets the verified retained window after document changes")
+    func inactiveTabLiveTarget() throws {
+        let (controller, _) = controller()
+        let window = AXUIElementCreateApplication(getpid())
+        let original = target(axWindow: window, path: "/tmp/one.md")
+        #expect(controller.beginSessionIfPossible(for: original) == "")
+        #expect(controller.commitAndSave(editorText: "first").0)
+        let first = try #require(controller.activeSession?.note.id)
+        #expect(controller.addTab(editorText: "first"))
+        #expect(controller.commitAndSave(editorText: "second").0)
+        let changed = target(axWindow: window, path: "/tmp/two.md")
+        #expect(controller.liveTarget(for: first) != nil)
+        #expect(controller.liveTargetMatchesNote(noteID: first, target: changed))
+        #expect(!controller.liveTargetMatchesNote(noteID: first, target: target(axWindow: AXUIElementCreateSystemWide())))
+        #expect(!controller.liveTargetMatchesNote(noteID: first, target: target(axWindow: window, bundleIdentifier: "com.example.other")))
+    }
+
+    @Test("Closed note restores into app tabs and keeps later library edits")
+    func restoredTabLibraryDraft() throws {
+        let (controller, repository) = controller()
+        let window = target(axWindow: AXUIElementCreateApplication(getpid()))
+        #expect(controller.beginSessionIfPossible(for: window) == "")
+        #expect(controller.commitAndSave(editorText: "archived text").0)
+        let id = try #require(controller.activeSession?.note.id)
+        #expect(controller.closeTab(noteID: id, editorText: "archived text"))
+        controller.endActiveSession()
+        let archived = try #require(repository.fetchArchivedNotes().first { $0.id == id })
+        let edit = try #require(controller.beginLibraryEditing(for: archived))
+        #expect(controller.restoreLibraryNote(noteID: id, editorText: "restored", token: edit.token).0)
+        controller.libraryEditorTextDidChange("stale callback", token: edit.token)
+        let restored = try #require(try repository.fetchActiveNotesThrowing().first { $0.id == id })
+        let reopened = try #require(controller.beginLibraryEditing(for: restored))
+        #expect(reopened.text == "restored")
+        controller.libraryEditorTextDidChange("latest library text", token: reopened.token)
+        #expect(controller.forceSaveAll())
+        #expect(controller.endLibraryEditing(token: reopened.token))
+        #expect(controller.beginSessionIfPossible(for: window) != nil)
+        let selectedText = controller.activeSession!.note.noteText
+        #expect(controller.selectTab(noteID: id, editorText: selectedText))
+        #expect(controller.activeSession?.note.noteText == "latest library text")
+        #expect(controller.forceSaveAll())
+        #expect(try repository.fetchAppNotesThrowing(forBundleIdentifier: "com.example.editor").first { $0.id == id }?.noteText == "latest library text")
     }
 }

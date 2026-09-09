@@ -1,12 +1,12 @@
 #!/bin/bash
-# release.sh — One-command native macOS 14+ universal release for Verso v1.1.3.
+# release.sh — One-command native macOS 14+ universal release for Verso v1.2.0.
 # No dependencies beyond stock macOS tools: xcodebuild, ditto, hdiutil,
 # codesign, lipo, plutil, shasum. No Finder-layout automation, no uploads,
-# no notarization claims. The app is ad-hoc signed; its first launch can
+# no notarization claims. The app is signed with the pinned certificate; its first launch can
 # require the normal macOS Open Anyway confirmation.
 #
-# Output: build/releases/1.1.3/ with Verso.app, Verso-1.1.3-universal.dmg,
-# Verso-1.1.3-universal.zip and SHA256SUMS.
+# Output: build/releases/1.2.0/ with Verso.app, Verso-1.2.0-universal.dmg,
+# Verso-1.2.0-universal.zip and SHA256SUMS.
 #
 # Safety: everything builds and validates under .build staging; the complete
 # release directory is published only after all checks pass. A previous
@@ -17,8 +17,8 @@
 # mapfile, ${var,,} or other newer features.
 set -euo pipefail
 
-VERSION="1.1.3"
-BUILD="9"
+VERSION="1.2.0"
+BUILD="14"
 BUNDLE_ID="com.verso.app"
 DMG_NAME="Verso-${VERSION}-universal.dmg"
 ZIP_NAME="Verso-${VERSION}-universal.zip"
@@ -31,12 +31,16 @@ if [ "${1:-}" = "-h" ] || [ "${1:-}" = "--help" ]; then usage; exit 0; fi
 if [ "$#" -ne 0 ]; then echo "[release] ERROR: unknown argument: $1" >&2; usage; exit 64; fi
 
 PROJECT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+fail() { echo "[release] ERROR: $1" >&2; exit 1; }
+# shellcheck disable=SC1091
+. "$PROJECT_DIR/scripts/signing.sh"
+# ponytail: single pinned identity, no ad-hoc fallback. Checked before any staging/build mutation.
+PIN="$(signing_pin)" || fail "cannot load pinned signing identity"
+signing_require_available "$PIN" || fail "signing identity unavailable: $PIN"
 RELEASE_DIR="$PROJECT_DIR/build/releases/$VERSION"
 mkdir -p "$PROJECT_DIR/.build"
 STAGING="$(mktemp -d "$PROJECT_DIR/.build/release-staging.XXXXXX")"
 BACKUP=""
-
-fail() { echo "[release] ERROR: $1" >&2; exit 1; }
 
 # ponytail: trap owns only this run's staging dir; the previous release is
 # restored (moved back, never deleted) when publish never completes.
@@ -62,20 +66,20 @@ DERIVED="$STAGING/DerivedData"
 PAYLOAD="$STAGING/payload"
 mkdir -p "$PAYLOAD"
 
-echo "[release] Building universal Release (xcodebuild, ad-hoc sign)..." >&2
+echo "[release] Building universal Release (xcodebuild, pinned sign)..." >&2
 if [ "${VERSO_BUILD_IN_SANDBOX:-0}" = "1" ]; then
     # Same SwiftData macro compiler flag as scripts/build.sh, in xcodebuild form.
     xcodebuild -project "$PROJECT_DIR/Verso.xcodeproj" -scheme Verso \
         -configuration Release -sdk macosx -destination 'generic/platform=macOS' \
         -derivedDataPath "$DERIVED" \
-        ARCHS='arm64 x86_64' ONLY_ACTIVE_ARCH=NO CODE_SIGN_IDENTITY=- \
+        ARCHS='arm64 x86_64' ONLY_ACTIVE_ARCH=NO CODE_SIGN_IDENTITY="$PIN" \
         OTHER_SWIFT_FLAGS='$(inherited) -Xfrontend -disable-sandbox' \
         build || fail "xcodebuild failed"
 else
     xcodebuild -project "$PROJECT_DIR/Verso.xcodeproj" -scheme Verso \
         -configuration Release -sdk macosx -destination 'generic/platform=macOS' \
         -derivedDataPath "$DERIVED" \
-        ARCHS='arm64 x86_64' ONLY_ACTIVE_ARCH=NO CODE_SIGN_IDENTITY=- \
+        ARCHS='arm64 x86_64' ONLY_ACTIVE_ARCH=NO CODE_SIGN_IDENTITY="$PIN" \
         build || fail "xcodebuild failed"
 fi
 
@@ -111,6 +115,8 @@ case "$ARCHS" in *x86_64*) ;; *) fail "missing x86_64 slice (got: $ARCHS)" ;; es
     || fail "missing tr.lproj/Localizable.strings"
 codesign --verify --deep --strict --verbose=2 "$PAYLOAD/Verso.app" \
     || fail "strict signature verification failed"
+# Reject a bundle signed with anything but the pin before publishing.
+signing_verify "$PIN" "$PAYLOAD/Verso.app" || fail "pinned signing verification failed"
 
 echo "[release] Creating DMG (hdiutil UDZO/HFS+)..." >&2
 DMG_SRC="$STAGING/dmg-src"
@@ -128,7 +134,7 @@ TÜRKÇE
 5. Dil varsayılan olarak sistemi izler. Ayarlar → Dil bölümünden Türkçe veya English seçebilirsiniz; değişiklik sonraki açılışta uygulanır.
 
 Bu ücretsiz sürüm Apple noter onayına sahip değildir; ilk açılışta macOS onayı gerekebilir.
-Güncelleme sonrasında Verso'nun izinlerini yeniden vermeniz gerekebilir. Notlarınız korunur.
+Eski geçici imzadan ilk geçişte izinleri yeniden vermeniz gerekebilir. Sonraki sürümler aynı kalıcı sertifikayı kullanır. Notlarınız korunur.
 
 ENGLISH
 1. Drag Verso.app into Applications.
@@ -138,7 +144,7 @@ ENGLISH
 5. Language follows the system by default. Settings → Language offers Türkçe and English; changes apply on the next launch.
 
 This free build is not notarized by Apple; macOS may require confirmation on first launch.
-After an update, you may need to grant Verso's permissions again. Your notes are preserved.
+The first migration from the old ad-hoc signature may require permissions again. Subsequent builds use the same persistent certificate. Your notes are preserved.
 DOCEOF
 hdiutil create -volname "Verso $VERSION" -srcfolder "$DMG_SRC" \
     -ov -format UDZO -fs HFS+ -o "$PAYLOAD/$DMG_NAME" || fail "hdiutil create failed"

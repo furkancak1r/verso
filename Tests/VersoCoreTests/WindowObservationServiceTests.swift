@@ -268,8 +268,8 @@ struct WindowObservationServiceTests {
         #expect(events == 0)
     }
 
-    @Test("Observed exact document changes save and release the old live note")
-    func observedDocumentChangeReleasesOldBinding() {
+    @Test("Observed document changes retain the application notebook")
+    func observedDocumentChangeKeepsAppBinding() {
         let repository = NoteRepository()
         let controller = NoteSessionController(
             repository: repository,
@@ -283,16 +283,16 @@ struct WindowObservationServiceTests {
         #expect(controller.beginSessionIfPossible(for: first) == "")
         #expect(controller.commitAndSave(editorText: "note A").0)
 
-        let result = controller.handleObservedMetadata(
-            for: second,
-            editorText: "note A"
-        )
-        if case .documentChanged = result {
-        } else {
-            Issue.record("Expected the observed exact document change")
+        let sessionID = controller.activeSessionUUID
+        let noteID = controller.activeSession?.note.id
+        let result = controller.handleObservedMetadata(for: second, editorText: "note A")
+        if case .unchanged = result { } else {
+            Issue.record("Document changes must keep the application notebook")
         }
-        #expect(controller.activeSessionUUID == nil)
-        #expect(controller.activeLiveSessionCount == 0)
+        #expect(controller.activeSessionUUID == sessionID)
+        #expect(controller.activeSession?.note.id == noteID)
+        #expect(controller.activeSession?.metadata.documentPath == "/tmp/B.md")
+        #expect(controller.activeLiveSessionCount == 1)
         let oldKey = controller.resolver.resolve(
             bundleIdentifier: first.metadata.bundleIdentifier,
             documentPath: first.metadata.documentPath,

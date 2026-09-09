@@ -83,6 +83,23 @@ public final class WindowNote {
 
     // MARK: - Computed
 
+    public var hasContent: Bool {
+        !noteText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    /// Editing and display copies survive deletion of the stored SwiftData row.
+    public func detachedCopy() -> WindowNote {
+        let copy = WindowNote(
+            id: id, identityKey: identityKey, confidence: confidence,
+            bundleIdentifier: bundleIdentifier, applicationName: applicationName,
+            windowTitle: windowTitle, documentPath: documentPath, noteText: noteText,
+            createdAt: createdAt, updatedAt: updatedAt, lastOpenedAt: lastOpenedAt,
+            pinned: pinned, archived: archived
+        )
+        copy.confidenceRaw = confidenceRaw
+        return copy
+    }
+
     /// The confidence level.
     public var confidence: IdentityConfidence {
         get { IdentityConfidence(rawValue: confidenceRaw) ?? .sessionOnly }

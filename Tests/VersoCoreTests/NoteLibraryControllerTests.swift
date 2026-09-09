@@ -384,7 +384,7 @@ struct NoteLibraryControllerTests {
         #expect(!afterDelete.contains { $0.id == note.id })
     }
 
-    @Test("Show Window validation uses the retained target and rejects a changed document")
+    @Test("Show Window validation uses the retained target and rejects another application")
     func validatedShowWindowRouting() throws {
         let (controller, repository) = controller()
         let live = target(path: "/tmp/show-window-a.md")
@@ -419,7 +419,7 @@ struct NoteLibraryControllerTests {
         let wrong = AccessibilityWindowService.ResolvedTargetWindow(
             metadata: TargetWindowMetadata(
                 pid: live.metadata.pid,
-                bundleIdentifier: live.metadata.bundleIdentifier,
+                bundleIdentifier: "com.example.unrelated",
                 appName: live.metadata.appName,
                 windowTitle: "Other document",
                 windowRole: TargetWindowMetadata.windowRole,
@@ -436,7 +436,7 @@ struct NoteLibraryControllerTests {
         let wrongService = AccessibilityWindowService(
             refreshOverride: { _ in .current(wrong) },
             raiseOverride: { _ in
-                Issue.record("Raise must not run for a different document")
+                Issue.record("Raise must not run for a different application")
                 return true
             }
         )
@@ -519,6 +519,82 @@ extension NoteLibraryControllerTests {
             #expect(frame.height > 180)
         }
         #expect(library.forceSaveForQuit())
+    }
+
+    @Test("Clearing a note removes its row while real Undo/Redo and failed-save recovery survive", arguments: [false, true])
+    func emptyNoteKeepsNativeHistory(failFirstDelete: Bool) throws {
+        _ = NSApplication.shared
+        let repository = NoteRepository()
+        var scheduled: (() -> Void)?
+        var fail = false
+        let error = NSError(domain: "VersoLibraryTests", code: 4)
+        let sessions = NoteSessionController(
+            repository: repository,
+            schedulerFactory: { _, callback in scheduled = callback; return nil },
+            reservationLiveness: { _, _ in .alive },
+            repositorySave: { fail ? (false, error) : repository.save() }
+        )
+        #expect(sessions.openStore(inMemory: true))
+        let live = target(path: "/tmp/empty-note-history.md")
+        #expect(sessions.beginSessionIfPossible(for: live) == "")
+        let text = "Türkçe not / English note ✅"
+        #expect(sessions.toggleActiveNotePin(editorText: text).0)
+        let noteID = try #require(sessions.activeSession?.note.id)
+        #expect(sessions.yieldActiveOverlay(editorText: text))
+        let library = NoteLibraryController(
+            noteSessionController: sessions,
+            accessibilityWindowService: AccessibilityWindowService(refreshOverride: { _ in .invalid }),
+            prepareOverlayForLibrary: { true }
+        )
+        sessions.onSaveErrorChanged = { [weak library] _ in library?.saveStateDidChange() }
+        let view = library.loadContentView()
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 860, height: 560),
+                              styleMask: [.titled], backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        window.contentView = view
+        defer { _ = library.forceSaveForQuit(); window.close() }
+        let scope = try #require(descendants(view).compactMap { $0 as? NSSegmentedControl }.first)
+        scope.selectedSegment = 2
+        #expect(NSApp.sendAction(try #require(scope.action), to: scope.target, from: scope))
+        let editor = try #require(descendants(view).compactMap { $0 as? NativeNoteEditor }.first)
+        #expect(window.makeFirstResponder(editor.textView))
+        let undo = try #require(editor.textView.undoManager)
+        let token = try #require(sessions.libraryEditorToken)
+        fail = failFirstDelete
+        editor.textView.insertText("", replacementRange: NSRange(location: 0, length: (text as NSString).length))
+        editor.textView.breakUndoCoalescing()
+        let clearCallback = try #require(scheduled)
+        clearCallback()
+        if failFirstDelete {
+            #expect(library.displayedNotes.map(\.id) == [noteID])
+            #expect(try repository.fetchActiveNotesThrowing().first?.noteText == text)
+            #expect(sessions.hasUnsavedLibraryChanges)
+            fail = false
+            #expect(sessions.retryPendingSaves())
+        }
+        #expect(try repository.fetchActiveNotesThrowing().isEmpty)
+        #expect(library.displayedNotes.isEmpty)
+        #expect(sessions.libraryEditorToken == token)
+        #expect(window.firstResponder === editor.textView)
+        #expect(editor.textView.isEditable)
+        #expect(undo.canUndo)
+        undo.undo()
+        #expect(sessions.libraryEditorText == text)
+        #expect(sessions.libraryEditorNote?.pinned == true)
+        #expect(sessions.libraryEditorNote?.modelContext == nil)
+        let undoCallback = try #require(scheduled)
+        undoCallback()
+        #expect(editor.text == text)
+        #expect(library.displayedNotes.map(\.id) == [noteID])
+        #expect(try repository.fetchPinnedNotesThrowing().map(\.id) == [noteID])
+        #expect(sessions.libraryEditorToken == token)
+        undo.redo()
+        let redoCallback = try #require(scheduled)
+        redoCallback()
+        #expect(editor.text.isEmpty)
+        #expect(library.displayedNotes.isEmpty)
+        #expect(try repository.fetchActiveNotesThrowing().isEmpty)
+        #expect(editor.textView.undoManager === undo)
     }
 
     private func descendants(_ view: NSView) -> [NSView] {

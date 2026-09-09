@@ -2,6 +2,38 @@
 
 This is a verification record, not a claim that every application exposes usable Accessibility metadata. A rejected ambiguous title-bar hit is safer than interfering with another app. Populate results only from observed runs.
 
+## Application tabs — 1.2.0 build 14 (2026-09-09)
+
+Application notebooks use the existing nonempty bundle identifier. Same-app windows share tabs; different apps remain separate. Legacy nonarchived notes are loaded in creation order without a schema migration. Closed nonempty tabs are archived; blank tabs stay in memory. Each open overlay retains a separate native editor/UndoManager per tab; history across overlay/process restarts is not retained.
+
+Automated verification: 320 Swift tests / 16 suites pass in the native desktop context (`.build/app-tabs-full-native.log`), including app isolation, legacy restoration, tab save/archive failure, blank discard, inactive library edits, retained target validation and independent editor selection/Undo/Redo. Signing fail-closed fixtures pass 20 checks. A read-only source review found no concrete data-loss or cross-application sharing defect.
+
+Initial installed Turkish desktop run passed all 34 tab-specific stages: capture, native Unicode editing, pin feedback, Undo/Redo/Find, return/reopen, new tabs, separate undo histories, same-app second-window sharing, archive-on-close and blank discard. Final installed 1.2.0 build14 passed all 34 stages in both English and Turkish (`.build/app-tabs-desktop-en.log`, `.build/app-tabs-desktop-tr-final.log`). Settings was verified in English and restored to System; the final running language is Turkish. The installed, host and universal bundles are all 1.2.0 build14. Both permissions survived the same-certificate update; startup had zero utility windows and real capture/Option-click passed. The final DMG/ZIP SHA-256 values match, and the 1.1.4 DMG is preserved. Acceptance: `.build/app-tabs-acceptance.json`. `VERSO_SMOKE_TABS_ONLY=1` selects these stages instead of the separate window-control gesture suite. Existing `note_drag_live_sync` failure recorded for 1.1.4 is not claimed fixed by this release.
+
+## Persistent signing — 2026-09-09, installed update verified
+
+Verso 1.1.4 builds 12 and 13 are signed with the same self-signed certificate pinned in Resources/Signing.xcconfig. The private key is in the owner’s login Keychain; only user-domain codeSign trust was approved. Both arm64 and x86_64 have different CodeDirectory hashes between the builds but identical certificate-bound designated requirements. Missing identities and wrong signer/per-architecture verification failures reject packaging; previous applications and releases are preserved.
+
+Installed build 12 at /Applications/Verso.app reported Accessibility granted. Screen Recording became granted after the normal app request and a normal relaunch. No Settings switches were changed, and no TCC records were reset or removed. Build 12 was then replaced by build 13 at the same path. Both grants remained active **without another access request**. Build 13 started with zero utility windows, and opening Permissions manually showed both granted with the setup help hidden.
+
+For **each installed build**, the owned synthetic-window run passed actual Option-click interception, successful window/backdrop capture (observed as the success-only expanded animation canvas), native Unicode typing, pin feedback, Undo/Redo, Find, Escape and reopening. No pixels were read or saved by the runner’s observation. The full desktop runner then failed at `note_drag_live_sync` on both builds. That window-control issue remains open; the full desktop smoke is **not** a pass and later control stages did not run. This does not invalidate the separately observed permission/capture/input update checks.
+
+Signing regression: 20/20 checks pass. The full Swift suite passes 308 tests in 16 suites in the normal desktop execution context; a sandbox run without a completion summary is not counted. Xcode Release resolves the pinned fingerprint and requires code signing. Both universal DMG/ZIP builds passed strict signatures, per-architecture certificate requirements and SHA-256 checks. Final installed version is 1.1.4 build 13; installed files match its release bundle. Earlier packages and installed apps were preserved.
+
+Evidence: .build/persistent-signing-{A,B}-identity.json, .build/persistent-signing-{A,B}-permissions.jsonl, .build/persistent-signing-{A,B}-desktop.log, .build/persistent-signing-B-startup.txt, .build/persistent-signing-install-{12,13}.json and .build/persistent-signing-release-{A,B}.log. This verifies one local installed update on the tested Mac; macOS 14/Intel hardware, future OS changes and key loss are not covered. The free certificate is not Developer ID or notarization.
+
+## Version 1.1.4 build 11 — conditional setup details
+
+Permissions now hides the running version/path, setup instructions and Finder button when both permissions are granted. Missing or unknown access keeps the entire setup section available. The existing observed permission state drives the condition; error messages remain separate.
+
+Universal packaging, signature/resource checks and host assembly passed. Build 11 was installed with the previous app retained. The installed app currently reports both permissions denied, so its setup section correctly remains visible after Refresh Status. The all-granted branch has not been observed in this installed run. No permission records or switches were changed. The 308-test result below belongs to the preceding build; this small visibility change was verified by compilation and the installed missing-permission state.
+
+## Version 1.1.4 build 10 — empty notes
+
+New blank or whitespace-only drafts create no stored rows. Clearing an existing note deletes only its UUID's stored row; editing drafts and library display snapshots remain detached so the current editor stays alive. Undo/Redo restores or removes the same note and preserves its metadata. Native undo-completion notifications now feed autosave. Blank notes cannot be newly pinned or archived; both languages explain the disabled controls. Existing stores are not bulk-cleaned.
+
+308 tests in 16 suites passed, including temporary on-disk empty-draft checks, failed-delete rollback, independent pending drafts, native list removal without losing focus or Undo/Redo, and clearing a dead window's pending note before restoring a new window. Both normal and failed-save retry variants pass. The universal DMG/ZIP passed staging, architecture, resources, icon, signature and checksum verification; previous packages were preserved. Installed 1.1.4 matches the release bytes and the prior app was backed up before replacement. These synthetic native checks do not replace the separately pending full window-control desktop acceptance below.
+
 ## Version 1.1.3 build 9 — permission list setup
 
 The permission cards now open only their System Settings pane. The bilingual instructions use the permission list's + button and the native application picker; the running app path remains selectable, and Show Verso in Finder remains a separate action. This follows Apple's documented [Accessibility setup](https://support.apple.com/en-gb/guide/mac-help/-mh43185/mac) and [screen recording setup](https://support.apple.com/en-ie/guide/mac-help/mchld6aa7d23/mac). Earlier Finder-selection checks did not test dropping the app into a permission list or successful registration.
@@ -89,7 +121,7 @@ For each application:
 3. Option-click close/minimize/zoom controls, tab/toolbar buttons, text fields, app content, sheets, popovers, menus, Dock and desktop. Confirm no Verso flip and unchanged normal interaction.
 4. Enter multiline Unicode, emoji and a link; use selection, scrolling, Cmd+A/C/V/X, undo/redo and Cmd+F. Escape and Back return to the current target window.
 5. Change underlying target content while the note is open. Flip back and confirm the returning front is fresh. There must be no saved image files or thumbnail history.
-6. Open two distinct windows with the same title. Their notes must remain distinct. Close/reopen saved documents and verify restoration only when identity is sufficiently strong. Browser tab changes must not attach another tab/window's saved note.
+6. Open two windows of the same application: they must share note tabs and the selected tab. Change a document or browser tab: the application notebook must remain. Open a different application: its tabs must stay separate. Verify persisted nonempty tabs after relaunch; closed notes stay in Archive and blank tabs do not persist.
 7. Move and resize the target through another means while Verso is open. Confirm alignment updates after the AX notification without recurring captures.
 8. Minimize, close, hide or quit the target; activate an unrelated application/window. Confirm note save and overlay removal. Reopen the note from the library.
 9. Quit/relaunch Verso and reboot; verify saved notes, pin/archive state and search results. Verify Show Window only raises a validated live window.

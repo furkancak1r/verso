@@ -223,6 +223,27 @@ public final class NoteRepository: Sendable {
         }
     }
 
+    /// Fetch non-archived notes for one application notebook. Grouping uses
+    /// the existing bundleIdentifier only; empty identifiers must never be
+    /// passed in, so unidentified apps cannot merge into one notebook.
+    public func fetchAppNotesThrowing(forBundleIdentifier bundleID: String) throws -> [WindowNote] {
+        guard let context else { throw RepositoryError.storeNotOpen }
+        let id = bundleID
+        return try context.fetch(FetchDescriptor<WindowNote>(
+            predicate: #Predicate { note in note.bundleIdentifier == id && !note.archived },
+            sortBy: [SortDescriptor(\.createdAt)]
+        ))
+    }
+
+    public func fetchAppNotes(forBundleIdentifier bundleID: String) -> [WindowNote] {
+        do {
+            return try fetchAppNotesThrowing(forBundleIdentifier: bundleID)
+        } catch {
+            lastError = error
+            return []
+        }
+    }
+
     // MARK: - Mutation
 
     public func insert(_ note: WindowNote) {
@@ -249,8 +270,64 @@ public final class NoteRepository: Sendable {
         }
     }
 
-    public func delete(_ note: WindowNote) {
-        context?.delete(note)
+    /// Save a detached editor draft. Blank text removes only its stored row;
+    /// the draft remains usable by the editor and its Undo/Redo history.
+    /// App edits stay in detached drafts, so rollback cannot discard them.
+    @discardableResult
+    public func saveDraft(
+        _ draft: WindowNote,
+        save: (() -> (Bool, Error?))? = nil
+    ) -> (Bool, Error?) {
+        guard let context else {
+            let error = RepositoryError.storeNotOpen
+            lastError = error
+            return (false, error)
+        }
+        do {
+            let stored = try storedNote(id: draft.id)
+            if !draft.hasContent {
+                if let stored { context.delete(stored) }
+            } else if let stored {
+                stored.identityKey = draft.identityKey
+                stored.confidenceRaw = draft.confidenceRaw
+                stored.bundleIdentifier = draft.bundleIdentifier
+                stored.applicationName = draft.applicationName
+                stored.windowTitle = draft.windowTitle
+                stored.documentPath = draft.documentPath
+                stored.noteText = draft.noteText
+                stored.createdAt = draft.createdAt
+                stored.updatedAt = draft.updatedAt
+                stored.lastOpenedAt = draft.lastOpenedAt
+                stored.pinned = draft.pinned
+                stored.archived = draft.archived
+            } else {
+                context.insert(draft.detachedCopy())
+            }
+            guard context.hasChanges else {
+                lastError = nil
+                return (true, nil)
+            }
+            let result = save?() ?? self.save()
+            if !result.0 { context.rollback() }
+            lastError = result.1
+            return result
+        } catch {
+            lastError = error
+            return (false, error)
+        }
+    }
+
+    public func delete(_ note: WindowNote) throws {
+        if let stored = try storedNote(id: note.id) {
+            context?.delete(stored)
+        }
+    }
+
+    private func storedNote(id: UUID) throws -> WindowNote? {
+        guard let context else { throw RepositoryError.storeNotOpen }
+        var descriptor = FetchDescriptor<WindowNote>(predicate: #Predicate { $0.id == id })
+        descriptor.fetchLimit = 1
+        return try context.fetch(descriptor).first
     }
 
     /// Undo a failed delete after the caller has flushed all other pending

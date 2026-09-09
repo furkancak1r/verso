@@ -4,6 +4,12 @@ import AppKit
 import VersoCore
 #endif
 
+struct OverlayNoteTab {
+    let id: UUID
+    let text: String
+    let pinned: Bool
+}
+
 @MainActor
 final class OverlayContentView: NSView {
     private var backAction: (() -> Void)?
@@ -222,6 +228,20 @@ final class OverlayContentView: NSView {
             return
         }
         super.keyDown(with: event)
+    }
+
+    /// Called by the owning window before NSTextView consumes tab shortcuts.
+    @discardableResult
+    func handleTabShortcut(_ event: NSEvent) -> Bool {
+        noteSurfaceView.handleTabShortcut(event)
+    }
+
+    func configureTabs(_ tabs: [OverlayNoteTab], selectedID: UUID,
+                       onAdd: @escaping () -> Void,
+                       onSelect: @escaping (UUID) -> Void,
+                       onClose: @escaping (UUID) -> Void) {
+        noteSurfaceView.configureTabs(tabs, selectedID: selectedID,
+                                     onAdd: onAdd, onSelect: onSelect, onClose: onClose)
     }
 
     // MARK: - Surface visibility
@@ -522,12 +542,28 @@ private final class OverlayNoteSurfaceView: NSView {
     private var backAction: (() -> Void)?
     private let headerView = NSView()
     private let backButton = NSButton(title: L("overlay.back"), target: nil, action: nil)
-    private let noteEditor: NativeNoteEditor
+    private var noteEditor: NativeNoteEditor
+    private let editorContainer = NSView()
+    private let tabScroll = NSScrollView()
+    private let tabStack = NSStackView()
+    private let addTabButton = NSButton()
+    private var tabHeight: NSLayoutConstraint!
+    private var tabEditors: [UUID: NativeNoteEditor] = [:]
+    private var tabs: [OverlayNoteTab] = []
+    private var selectedTabID: UUID?
+    private var tabTargets: [ClosureTarget] = []
+    private var tabButtons: [UUID: NSButton] = [:]
+    private var onAddTab: (() -> Void)?
+    private var onSelectTab: ((UUID) -> Void)?
+    private var onCloseTab: ((UUID) -> Void)?
+    private var onEditorTextChange: ((String) -> Void)?
+    private var editingEnabled = true
     private var appNameLabel: NSTextField?
     private var windowTitleLabel: NSTextField?
     private var pinTarget: ClosureTarget?
     private var archiveTarget: ClosureTarget?
     private let pinButton = NSButton()
+    private let archiveButton = NSButton()
     private final class PinFeedbackLabel: NSTextField {
         override func hitTest(_ point: NSPoint) -> NSView? { nil }
     }
@@ -556,9 +592,12 @@ private final class OverlayNoteSurfaceView: NSView {
         self.backAction = backAction
         self.noteEditor = NativeNoteEditor(
             initialText: initialText,
-            onTextChange: onTextChange
+            undoManager: UndoManager(),
+            onTextChange: nil
         )
         super.init(frame: .zero)
+        onEditorTextChange = onTextChange
+        bindEditor(noteEditor)
 
         headerView.translatesAutoresizingMaskIntoConstraints = false
         noteEditor.translatesAutoresizingMaskIntoConstraints = false
@@ -647,14 +686,7 @@ private final class OverlayNoteSurfaceView: NSView {
             pinButton.action = #selector(ClosureTarget.fire)
         }
 
-        let archiveButton = NSButton(
-            image: NSImage(
-                systemSymbolName: "archivebox",
-                accessibilityDescription: L("overlay.archiveAlt")
-            )!,
-            target: nil,
-            action: nil
-        )
+        archiveButton.image = NSImage(systemSymbolName: "archivebox", accessibilityDescription: L("overlay.archiveAlt"))
         archiveButton.bezelStyle = .inline
         archiveButton.isBordered = false
         archiveButton.setContentHuggingPriority(.required, for: .horizontal)
@@ -706,8 +738,11 @@ private final class OverlayNoteSurfaceView: NSView {
         headerView.addSubview(topBar)
         headerView.addSubview(divider)
         addSubview(headerView)
-        addSubview(noteEditor)
+        editorContainer.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(editorContainer)
+        attachEditor(noteEditor)
         addSubview(pinFeedbackLabel)
+        tabHeight = editorContainer.topAnchor.constraint(equalTo: headerView.bottomAnchor, constant: 18)
 
         NSLayoutConstraint.activate([
             pinFeedbackLabel.trailingAnchor.constraint(
@@ -738,17 +773,190 @@ private final class OverlayNoteSurfaceView: NSView {
             headerView.trailingAnchor.constraint(equalTo: trailingAnchor),
             headerView.topAnchor.constraint(equalTo: topAnchor),
             headerView.bottomAnchor.constraint(equalTo: divider.bottomAnchor),
-            noteEditor.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 16),
-            noteEditor.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -16),
-            noteEditor.topAnchor.constraint(equalTo: headerView.bottomAnchor, constant: 18),
-            noteEditor.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -16)
+            editorContainer.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 16),
+            editorContainer.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -16),
+            tabHeight,
+            editorContainer.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -16)
         ])
     }
 
     required init?(coder: NSCoder) { return nil }
 
+    private func bindEditor(_ editor: NativeNoteEditor) {
+        editor.onTextChange = { [weak self, weak editor] text in
+            guard let self, let editor, self.noteEditor === editor else { return }
+            self.updateNoteActions()
+            self.updateTabTitles()
+            self.onEditorTextChange?(text)
+        }
+    }
+
+    private func attachEditor(_ editor: NativeNoteEditor) {
+        // Each tab keeps its own native view and UndoManager while detached.
+        editor.frame = editorContainer.bounds
+        editor.translatesAutoresizingMaskIntoConstraints = true
+        editor.autoresizingMask = [.width, .height]
+        editorContainer.addSubview(editor)
+    }
+
+    func configureTabs(_ tabs: [OverlayNoteTab], selectedID: UUID,
+                       onAdd: @escaping () -> Void,
+                       onSelect: @escaping (UUID) -> Void,
+                       onClose: @escaping (UUID) -> Void) {
+        guard let selected = tabs.first(where: { $0.id == selectedID }) else { return }
+        if selectedTabID == nil {
+            tabEditors[selectedID] = noteEditor
+            if noteEditor.text != selected.text { noteEditor.load(selected.text) }
+            installTabBar()
+        }
+        let selectionChanged = selectedTabID != selectedID
+        self.tabs = tabs
+        self.onAddTab = onAdd
+        self.onSelectTab = onSelect
+        self.onCloseTab = onClose
+        if selectionChanged {
+            noteEditor.removeFromSuperview()
+            let editor = tabEditors[selectedID] ?? NativeNoteEditor(
+                initialText: selected.text, undoManager: UndoManager())
+            tabEditors[selectedID] = editor
+            noteEditor = editor
+            bindEditor(editor)
+            attachEditor(editor)
+            clearPinFeedback()
+        }
+        selectedTabID = selectedID
+        let currentIDs = Set(tabs.map(\.id))
+        for id in Array(tabEditors.keys) where !currentIDs.contains(id) {
+            tabEditors.removeValue(forKey: id)?.clearCallback()
+        }
+        rebuildTabs()
+        setPinState(selected.pinned)
+        noteEditor.setEditingEnabled(editingEnabled)
+        if selectionChanged { focusEditor() }
+    }
+
+    private func installTabBar() {
+        tabHeight.constant = 58
+        tabScroll.translatesAutoresizingMaskIntoConstraints = false
+        tabScroll.hasHorizontalScroller = true
+        tabScroll.autohidesScrollers = true
+        tabScroll.drawsBackground = false
+        tabScroll.borderType = .noBorder
+        tabScroll.setAccessibilityLabel(L("tabs.list"))
+        tabStack.orientation = .horizontal
+        tabStack.spacing = 5
+        tabStack.alignment = .centerY
+        tabStack.translatesAutoresizingMaskIntoConstraints = false
+        tabScroll.documentView = tabStack
+        addTabButton.image = NSImage(systemSymbolName: "plus", accessibilityDescription: L("tabs.new"))
+        addTabButton.bezelStyle = .rounded
+        addTabButton.toolTip = L("tabs.newHelp")
+        addTabButton.setAccessibilityLabel(L("tabs.new"))
+        addTabButton.setAccessibilityIdentifier("overlay.newTab")
+        addTabButton.target = self
+        addTabButton.action = #selector(addTabPressed(_:))
+        addTabButton.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(tabScroll)
+        addSubview(addTabButton)
+        NSLayoutConstraint.activate([
+            tabScroll.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 16),
+            tabScroll.trailingAnchor.constraint(equalTo: addTabButton.leadingAnchor, constant: -8),
+            tabScroll.topAnchor.constraint(equalTo: headerView.bottomAnchor, constant: 18),
+            tabScroll.heightAnchor.constraint(equalToConstant: 34),
+            tabStack.heightAnchor.constraint(equalTo: tabScroll.contentView.heightAnchor),
+            addTabButton.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -16),
+            addTabButton.centerYAnchor.constraint(equalTo: tabScroll.centerYAnchor),
+            addTabButton.widthAnchor.constraint(equalToConstant: 30)
+        ])
+    }
+
+    private func rebuildTabs() {
+        for row in tabStack.arrangedSubviews {
+            tabStack.removeArrangedSubview(row)
+            row.removeFromSuperview()
+        }
+        tabTargets.removeAll()
+        tabButtons.removeAll()
+        for tab in tabs {
+            let select = NSButton(title: "", target: nil, action: nil)
+            select.bezelStyle = .rounded
+            select.setButtonType(.pushOnPushOff)
+            select.state = tab.id == selectedTabID ? .on : .off
+            select.font = .systemFont(ofSize: 12, weight: tab.id == selectedTabID ? .semibold : .regular)
+            select.lineBreakMode = .byTruncatingTail
+            select.setAccessibilityIdentifier("overlay.tab.\(tab.id.uuidString)")
+            select.setAccessibilityValue(L(tab.id == selectedTabID ? "tabs.selected" : "tabs.unselected"))
+            let selectTarget = ClosureTarget { [weak self] in self?.onSelectTab?(tab.id) }
+            select.target = selectTarget
+            select.action = #selector(ClosureTarget.fire)
+            let close = NSButton(image: NSImage(systemSymbolName: "xmark", accessibilityDescription: L("tabs.close"))!, target: nil, action: nil)
+            close.bezelStyle = .inline
+            close.isBordered = false
+            close.toolTip = L("tabs.closeHelp")
+            close.setAccessibilityLabel(L("tabs.close"))
+            close.setAccessibilityIdentifier("overlay.closeTab.\(tab.id.uuidString)")
+            let closeTarget = ClosureTarget { [weak self] in self?.onCloseTab?(tab.id) }
+            close.target = closeTarget
+            close.action = #selector(ClosureTarget.fire)
+            tabTargets += [selectTarget, closeTarget]
+            tabButtons[tab.id] = select
+            let row = NSStackView(views: [select, close])
+            row.spacing = 2
+            row.orientation = .horizontal
+            row.alignment = .centerY
+            select.widthAnchor.constraint(equalToConstant: 150).isActive = true
+            close.widthAnchor.constraint(equalToConstant: 20).isActive = true
+            tabStack.addArrangedSubview(row)
+        }
+        updateTabTitles()
+        setEditingEnabled(editingEnabled)
+        layoutSubtreeIfNeeded()
+        if let button = tabButtons[selectedTabID ?? UUID()], let row = button.superview {
+            tabStack.scrollToVisible(row.frame)
+        }
+    }
+
+    private func updateTabTitles() {
+        for (index, tab) in tabs.enumerated() {
+            let text = tabEditors[tab.id]?.text ?? tab.text
+            var firstLine: String?
+            text.enumerateLines { line, stop in
+                let trimmed = line.trimmingCharacters(in: .whitespaces)
+                if !trimmed.isEmpty { firstLine = trimmed; stop = true }
+            }
+            let title = firstLine.map { String($0.prefix(80)) } ?? L("tabs.untitled", index + 1)
+            tabButtons[tab.id]?.title = title
+            tabButtons[tab.id]?.toolTip = title
+            tabButtons[tab.id]?.setAccessibilityLabel(title)
+        }
+    }
+
+    @objc private func addTabPressed(_ sender: Any?) { onAddTab?() }
+
+    func handleTabShortcut(_ event: NSEvent) -> Bool {
+        guard editingEnabled, let selectedTabID else { return false }
+        let flags = event.modifierFlags.intersection([.command, .control, .option, .shift])
+        if flags == .command {
+            if event.charactersIgnoringModifiers?.lowercased() == "t" { onAddTab?(); return true }
+            if event.charactersIgnoringModifiers?.lowercased() == "w" { onCloseTab?(selectedTabID); return true }
+        }
+        if event.keyCode == 48, flags == .control || flags == [.control, .shift],
+           let index = tabs.firstIndex(where: { $0.id == selectedTabID }) {
+            let delta = flags.contains(.shift) ? -1 : 1
+            onSelectTab?(tabs[(index + delta + tabs.count) % tabs.count].id)
+            return true
+        }
+        return false
+    }
+
     func setEditingEnabled(_ enabled: Bool) {
+        editingEnabled = enabled
         noteEditor.setEditingEnabled(enabled)
+        for button in tabButtons.values { button.isEnabled = enabled }
+        for row in tabStack.arrangedSubviews {
+            for case let button as NSButton in row.subviews { button.isEnabled = enabled }
+        }
+        addTabButton.isEnabled = enabled
     }
 
     func commitMarkedText() {
@@ -778,6 +986,17 @@ private final class OverlayNoteSurfaceView: NSView {
         pinButton.setAccessibilityValue(
             L(pinned ? "overlay.pinnedFeedback" : "overlay.unpinnedFeedback")
         )
+        updateNoteActions()
+    }
+
+    private func updateNoteActions() {
+        let hasContent = !noteEditor.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        pinButton.isEnabled = pinState || hasContent
+        pinButton.toolTip = pinButton.isEnabled
+            ? L(pinState ? "overlay.unpinTooltip" : "overlay.pinTooltip")
+            : L("overlay.emptyNoteHelp")
+        archiveButton.isEnabled = hasContent
+        archiveButton.toolTip = hasContent ? nil : L("overlay.emptyNoteHelp")
     }
 
     func showPinSuccess(pinned: Bool) {
@@ -957,6 +1176,13 @@ private final class OverlayNoteSurfaceView: NSView {
         pinTarget = nil
         archiveTarget = nil
         noteEditor.clearCallback()
+        for editor in tabEditors.values { editor.clearCallback() }
+        tabEditors.removeAll()
+        onEditorTextChange = nil
+        onAddTab = nil
+        onSelectTab = nil
+        onCloseTab = nil
+        tabTargets.removeAll()
     }
 }
 

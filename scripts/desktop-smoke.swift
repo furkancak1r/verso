@@ -429,6 +429,22 @@ func smoke(root: String, appPath: String, pid: pid_t) async -> Bool {
     res.inputPairsSubmitted += 1
     optDn.post(tap: .cghidEventTap); optUp.post(tap: .cghidEventTap)
     emit("opt_click", "ok")
+    if ProcessInfo.processInfo.environment["VERSO_SMOKE_REQUIRE_CAPTURE"] == "1" {
+        // Only a successful window+backdrop capture expands this synthetic target's canvas.
+        // Metadata only: no pixels are read or written by this observation.
+        let captured = await poll(8.0, 0.02, {
+            guard let windows = CGWindowListCopyWindowInfo(.optionOnScreenOnly, kCGNullWindowID) as? [[String: Any]] else { return false }
+            return windows.contains { item in
+                guard (item[kCGWindowOwnerPID as String] as? NSNumber)?.int32Value == versoApp.processIdentifier,
+                      item[kCGWindowName as String] as? String == title,
+                      let bounds = item[kCGWindowBounds as String] as? [String: Any],
+                      let frame = CGRect(dictionaryRepresentation: bounds as CFDictionary) else { return false }
+                return frame.width > sf.width + 10 && frame.height > sf.height + 10
+            }
+        })
+        emit("capture_animation", captured ? "ok" : "fail")
+        guard captured else { sw.close(); return false }
+    }
     await wait(0.15)
 
     // ---- Wait for overlay with editor ----
@@ -447,6 +463,17 @@ func smoke(root: String, appPath: String, pid: pid_t) async -> Bool {
     let oTitle = title
     emit("overlay", "ok", ["title": oTitle, "x": Double(of.origin.x), "w": Double(of.width)])
 
+    // All data under this dedicated fixture bundle belongs to smoke tests.
+    // Start a fresh tab so repeated app-scoped runs never overwrite prior fixtures.
+    if identifiedControl(in: ew, id: "overlay.newTab") != nil {
+        guard versoReady(vax, oTitle, of) != nil,
+              let (down, up) = keyPair(17, .maskCommand) else {
+            abortRun("new_fixture_tab", "Cannot construct a guarded tab shortcut")
+        }
+        res.inputPairsSubmitted += 1
+        down.post(tap: .cghidEventTap); up.post(tap: .cghidEventTap)
+        await wait(0.3)
+    }
     var ev = Set<AXID>()
     guard let editor = findEditor(ew, 0, &ev) else {
         emit("editor", "fail"); sw.close(); return false
@@ -615,6 +642,14 @@ func smoke(root: String, appPath: String, pid: pid_t) async -> Bool {
     emit("pin_reopen", pinRestored ? "ok" : "fail", ["pinned_restored_without_stale_message": pinRestored])
     await pressPin(rw2, frame: of, expected: false, stage: "pin_off_after_reopen")
 
+    if ProcessInfo.processInfo.environment["VERSO_SMOKE_TABS_ONLY"] == "1" {
+        await exerciseApplicationTabs(source: sw, sourceAX: synthWin, verso: versoApp,
+                                      appAX: vax, selfAX: selfAX, title: title, text: text)
+        sw.close()
+        let gone = await poll(3, 0.1) { !axWins(vax).contains { axTitle($0) == title } }
+        emit("tabs_cleanup", gone ? "ok" : "fail")
+        return stagesPass(res.s)
+    }
     // ---- Movement/resize: compare ALL frame components within 2pt ----
     let origF = sw.frame
     await exerciseWindowControls(source: sw, sourceAX: synthWin, verso: versoApp,
@@ -642,6 +677,110 @@ func smoke(root: String, appPath: String, pid: pid_t) async -> Bool {
     emit("cleanup", editorGone ? "ok" : "fail", ["synthetic_window_absent": editorGone])
 
     return stagesPass(res.s)
+}
+
+// Application tabs QA touches only generated windows and this fixture bundle's notes.
+@MainActor
+func exerciseApplicationTabs(source: NSWindow, sourceAX: AXUIElement,
+                             verso: NSRunningApplication, appAX: AXUIElement,
+                             selfAX: AXUIElement, title: String, text: String) async {
+    var expectedTitle = title
+    func note() -> AXUIElement {
+        guard !verso.isTerminated,
+              NSWorkspace.shared.frontmostApplication?.processIdentifier == verso.processIdentifier,
+              let w = axFocusedWin(appAX), axTitle(w) == expectedTitle,
+              let f = axFrame(w), versoReady(appAX, expectedTitle, f) != nil else {
+            abortRun("tabs_guard", "Synthetic note window is not focused")
+        }
+        return w
+    }
+    func currentEditor() -> AXUIElement {
+        var seen = Set<AXID>()
+        guard let editor = findEditor(note(), 0, &seen) else { abortRun("tabs_editor", "Missing synthetic editor") }
+        return editor
+    }
+    func key(_ code: CGKeyCode, _ flags: CGEventFlags = [], text: String? = nil) async {
+        _ = note()
+        guard let (down, up) = keyPair(code, flags, text: text) else { abortRun("tabs_key", "Incomplete input pair") }
+        res.inputPairsSubmitted += 1
+        down.post(tap: .cghidEventTap); up.post(tap: .cghidEventTap)
+        // Native tab switching replaces AX children. Yield before traversing them.
+        await wait(0.3)
+    }
+    func tabIDs() -> [String] {
+        var ids: [String] = [], seen = Set<AXID>()
+        func visit(_ e: AXUIElement, _ depth: Int) {
+            guard depth < 16, seen.insert(AXID(r: e)).inserted else { return }
+            if let id = ax(e, kAXIdentifierAttribute) as? String, id.hasPrefix("overlay.tab.") { ids.append(id) }
+            for child in axChildren(e) { visit(child, depth + 1) }
+        }
+        visit(note(), 0)
+        return ids
+    }
+    let initialIDs = tabIDs()
+    let firstEditor = currentEditor()
+    await key(0, .maskCommand)
+    await key(0, text: "A-" + text)
+    emit("tabs_first_edit", await poll(3, 0.1) { axVal(firstEditor) == "A-" + text } ? "ok" : "fail")
+    await key(17, .maskCommand)
+    await wait(0.2)
+    let addedIDs = tabIDs().filter { !initialIDs.contains($0) }
+    guard addedIDs.count == 1, axVal(currentEditor()) == "" else { abortRun("tabs_new", "New tab is not uniquely empty") }
+    emit("tabs_new", "ok")
+    let secondID = addedIDs[0]
+    let secondEditor = currentEditor()
+    let secondText = "B-" + text
+    await key(0, text: secondText)
+    emit("tabs_second_edit", await poll(3, 0.1) { axVal(secondEditor) == secondText } ? "ok" : "fail")
+    // New tabs append after the first generated tab, so Ctrl+Shift+Tab returns to it.
+    await key(48, [.maskControl, .maskShift])
+    emit("tabs_switch_back", await poll(3, 0.1) { axVal(currentEditor()) == "A-" + text } ? "ok" : "fail")
+    await key(6, .maskCommand)
+    emit("tabs_independent_undo", await poll(3, 0.1) { axVal(currentEditor()) != "A-" + text } ? "ok" : "fail")
+    await key(6, [.maskCommand, .maskShift])
+    emit("tabs_independent_redo", await poll(3, 0.1) { axVal(currentEditor()) == "A-" + text } ? "ok" : "fail")
+    await key(48, .maskControl)
+    await wait(0.2)
+    emit("tabs_second_retained", axVal(currentEditor()) == secondText ? "ok" : "fail")
+    await key(53)
+    emit("tabs_return", await poll(4, 0.1) { !axWins(appAX).contains { axTitle($0) == title } } ? "ok" : "fail")
+
+    let other = NSWindow(contentRect: NSRect(x: 280, y: 180, width: 600, height: 400),
+                         styleMask: [.titled, .closable, .resizable, .miniaturizable], backing: .buffered, defer: false)
+    other.isReleasedWhenClosed = false
+    other.title = title + " SECOND WINDOW"
+    other.contentView = NSTextField(labelWithString: "Same application second synthetic window")
+    res.windowsCreated += 1
+    other.makeKeyAndOrderFront(nil)
+    NSApp.activate(ignoringOtherApps: true)
+    guard await poll(3, 0.1, { axFrontmost(selfAX) }),
+          let target = axWins(selfAX).first(where: { axTitle($0) == other.title }),
+          let frame = axFrame(target) else { abortRun("tabs_second_window", "Missing second fixture window") }
+    let point = CGPoint(x: frame.midX, y: frame.minY + 20)
+    guard clickValid(point, target, frame: frame),
+          let down = CGEvent(mouseEventSource: nil, mouseType: .leftMouseDown, mouseCursorPosition: point, mouseButton: .left),
+          let up = CGEvent(mouseEventSource: nil, mouseType: .leftMouseUp, mouseCursorPosition: point, mouseButton: .left) else {
+        abortRun("tabs_second_hit", "Second fixture window failed hit validation")
+    }
+    NSApp.yieldActivation(to: verso)
+    await wait(0.15)
+    guard clickValid(point, target, frame: frame), !verso.isTerminated else { abortRun("tabs_second_hit", "Second fixture changed") }
+    expectedTitle = other.title
+    down.flags = .maskAlternate; up.flags = .maskAlternate
+    res.inputPairsSubmitted += 1
+    down.post(tap: .cghidEventTap); up.post(tap: .cghidEventTap)
+    emit("tabs_same_app_second_window", await poll(8, 0.2) { versoReady(appAX, other.title, frame) != nil } ? "ok" : "fail")
+    emit("tabs_shared_selection_text", axVal(currentEditor()) == secondText && tabIDs().contains(secondID) ? "ok" : "fail")
+    await key(13, .maskCommand)
+    emit("tabs_close_archives", await poll(3, 0.1) { !tabIDs().contains(secondID) && axVal(currentEditor()) == "A-" + text } ? "ok" : "fail")
+    let beforeBlank = tabIDs()
+    await key(17, .maskCommand)
+    emit("tabs_blank_new", await poll(3, 0.1) { tabIDs().count == beforeBlank.count + 1 && axVal(currentEditor()) == "" } ? "ok" : "fail")
+    await key(13, .maskCommand)
+    emit("tabs_blank_close", await poll(3, 0.1) { tabIDs() == beforeBlank && axVal(currentEditor()) == "A-" + text } ? "ok" : "fail")
+    await key(53)
+    emit("tabs_final_return", await poll(4, 0.1) { !axWins(appAX).contains { axTitle($0) == other.title } } ? "ok" : "fail")
+    other.close()
 }
 
 // Actual pointer gestures on the generated note, never unrelated user windows.

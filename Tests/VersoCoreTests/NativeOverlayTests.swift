@@ -143,7 +143,7 @@ struct NativeOverlayTests {
         _ = NSApplication.shared
         let pinned = OverlayContentView(
             appName: "Synthetic app", windowTitle: "Synthetic note", appIcon: nil,
-            initialText: "", isPinned: true,
+            initialText: "Saved note", isPinned: true,
             backAction: {}, onPin: {}, onArchive: {}
         )
         pinned.frame = NSRect(x: 0, y: 0, width: 640, height: 462)
@@ -164,7 +164,7 @@ struct NativeOverlayTests {
 
         let unpinned = OverlayContentView(
             appName: "Synthetic app", windowTitle: "Synthetic note", appIcon: nil,
-            initialText: "", isPinned: false,
+            initialText: "Saved note", isPinned: false,
             backAction: {}, onPin: {}, onArchive: {}
         )
         unpinned.frame = NSRect(x: 0, y: 0, width: 640, height: 462)
@@ -240,6 +240,30 @@ struct NativeOverlayTests {
         #expect(content.isPinFeedbackVisibleForTests)
         content.clearAction()
         #expect(!content.isPinFeedbackVisibleForTests)
+    }
+
+    @Test("Blank notes disable pin/archive until text is entered")
+    func emptyNoteActions() throws {
+        _ = NSApplication.shared
+        let content = OverlayContentView(appName: "Synthetic", windowTitle: "Blank", appIcon: nil,
+                                         initialText: "", backAction: {})
+        defer { content.clearAction() }
+        let views = descendants(content)
+        let editor = try #require(views.compactMap { $0 as? NativeNoteEditor }.first)
+        let pin = try #require(views.compactMap { $0 as? NSButton }.first {
+            $0.accessibilityIdentifier() == "overlay.pin"
+        })
+        let archive = try #require(views.compactMap { $0 as? NSButton }.first {
+            $0.accessibilityLabel() == L("overlay.archiveNote")
+        })
+        #expect(!pin.isEnabled && !archive.isEnabled)
+        #expect(pin.toolTip == L("overlay.emptyNoteHelp"))
+        editor.textView.string = "Not / Note"
+        editor.textDidChange(Notification(name: NSText.didChangeNotification, object: editor.textView))
+        #expect(pin.isEnabled && archive.isEnabled)
+        editor.textView.string = " \n\t "
+        editor.textDidChange(Notification(name: NSText.didChangeNotification, object: editor.textView))
+        #expect(!pin.isEnabled && !archive.isEnabled)
     }
 
     @Test("Pin feedback keeps the editor first responder and preserves real undo and redo")
@@ -434,4 +458,98 @@ private func makeTestImage() -> CGImage {
         shouldInterpolate: false,
         intent: .defaultIntent
     )!
+}
+
+extension NativeOverlayTests {
+    @Test("Application tabs retain independent native editors, selection, undo and redo")
+    func tabEditorHistory() throws {
+        _ = NSApplication.shared
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 640, height: 460), styleMask: [.titled], backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        let first = UUID(), second = UUID()
+        let tabs = [OverlayNoteTab(id: first, text: "Bir", pinned: false), OverlayNoteTab(id: second, text: "İki", pinned: true)]
+        var changes: [String] = []
+        let content = OverlayContentView(appName: "Synthetic", windowTitle: nil, appIcon: nil, initialText: "Bir", backAction: {}, onTextChange: { changes.append($0) })
+        window.contentView = content
+        content.revealNoteSurface()
+        defer { content.clearAction(); window.close() }
+        func select(_ id: UUID) {
+            content.commitEditing()
+            content.configureTabs(tabs, selectedID: id, onAdd: {}, onSelect: { _ in }, onClose: { _ in })
+            content.layoutSubtreeIfNeeded()
+        }
+        select(first)
+        let a = try #require(descendants(content).compactMap { $0 as? NativeNoteEditor }.first)
+        let undoA = try #require(a.textView.undoManager)
+        undoA.groupsByEvent = false
+        undoA.beginUndoGrouping()
+        a.textView.insertText(" Türkçe", replacementRange: NSRange(location: 3, length: 0))
+        undoA.endUndoGrouping()
+        a.textView.setSelectedRange(NSRange(location: 1, length: 2))
+        select(second)
+        let b = try #require(descendants(content).compactMap { $0 as? NativeNoteEditor }.first)
+        let undoB = try #require(b.textView.undoManager)
+        #expect(a !== b && undoA !== undoB)
+        #expect(content.pinStateForTests)
+        undoB.groupsByEvent = false
+        undoB.beginUndoGrouping()
+        b.textView.insertText(" English", replacementRange: NSRange(location: 3, length: 0))
+        undoB.endUndoGrouping()
+        select(first)
+        #expect(window.firstResponder === a.textView)
+        #expect(a.textView.selectedRange() == NSRange(location: 1, length: 2))
+        #expect(a.text == "Bir Türkçe")
+        #expect(!content.pinStateForTests)
+        undoA.undo()
+        #expect(a.text == "Bir" && b.text == "İki English")
+        #expect(changes.last == "Bir")
+        undoA.redo()
+        #expect(a.text == "Bir Türkçe")
+        select(second)
+        undoB.undo()
+        #expect(b.text == "İki" && a.text == "Bir Türkçe")
+        #expect(changes.last == "İki")
+    }
+
+    @Test("Tab shortcuts cycle and close the selected tab without returning the window")
+    func tabShortcutsAndOverflow() throws {
+        _ = NSApplication.shared
+        let tabs = (0..<12).map { OverlayNoteTab(id: UUID(), text: "Uzun Türkçe başlık \($0) " + String(repeating: "abcçğıöşü", count: 12), pinned: false) }
+        let content = OverlayContentView(appName: "Synthetic", windowTitle: nil, appIcon: nil, backAction: { Issue.record("Unexpected return") })
+        content.frame = NSRect(x: 0, y: 0, width: 360, height: 400)
+        content.revealNoteSurface()
+        defer { content.clearAction() }
+        var added = 0, selected: UUID?, closed: UUID?
+        content.configureTabs(tabs, selectedID: tabs[0].id, onAdd: { added += 1 }, onSelect: { selected = $0 }, onClose: { closed = $0 })
+        content.layoutSubtreeIfNeeded()
+        func key(_ text: String, _ code: UInt16, _ flags: NSEvent.ModifierFlags) throws -> NSEvent {
+            try #require(NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: flags, timestamp: 0, windowNumber: 0, context: nil, characters: text, charactersIgnoringModifiers: text, isARepeat: false, keyCode: code))
+        }
+        #expect(content.handleTabShortcut(try key("t", 17, .command)))
+        #expect(added == 1)
+        #expect(content.handleTabShortcut(try key("w", 13, .command)))
+        #expect(closed == tabs[0].id)
+        #expect(content.handleTabShortcut(try key("\t", 48, .control)))
+        #expect(selected == tabs[1].id)
+        #expect(content.handleTabShortcut(try key("\t", 48, [.control, .shift])))
+        #expect(selected == tabs.last?.id)
+        content.setEditingEnabled(false)
+        #expect(!content.handleTabShortcut(try key("t", 17, .command)))
+        let add = try #require(descendants(content).compactMap { $0 as? NSButton }.first { $0.accessibilityIdentifier() == "overlay.newTab" })
+        #expect(!add.isEnabled)
+        #expect(add.toolTip == L("tabs.newHelp"))
+        content.setEditingEnabled(true)
+        add.performClick(nil)
+        #expect(added == 2)
+        let selectButton = try #require(descendants(content).compactMap { $0 as? NSButton }.first {
+            $0.accessibilityIdentifier() == "overlay.tab.\(tabs[1].id.uuidString)"
+        })
+        selectButton.performClick(nil)
+        #expect(selected == tabs[1].id)
+        #expect(!content.isHeaderClickTarget(at: center(of: add, in: content)))
+        let editor = try #require(descendants(content).compactMap { $0 as? NativeNoteEditor }.first)
+        #expect(editor.frame.width > 0 && editor.frame.height > 0)
+        let scroll = try #require(descendants(content).compactMap { $0 as? NSScrollView }.first { $0.accessibilityLabel() == L("tabs.list") })
+        #expect(scroll.documentView!.frame.width > scroll.contentView.bounds.width)
+    }
 }

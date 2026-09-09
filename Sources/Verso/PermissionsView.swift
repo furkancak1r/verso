@@ -28,27 +28,27 @@ struct PermissionsView: View {
                 permissionRow(category: .screenRecording, state: manager.screenRecordingState)
             }
 
-            VStack(alignment: .leading, spacing: 8) {
-                Text(L("perm.runningVersion", appMetadata.version, appMetadata.build))
-                    .font(.subheadline.weight(.semibold))
-                Text(Bundle.main.bundleURL.path)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .textSelection(.enabled)
-                    .fixedSize(horizontal: false, vertical: true)
-                Text(L("perm.addHelp"))
-                    .font(.caption)
-                    .fixedSize(horizontal: false, vertical: true)
-                if !manager.allPermissionsGranted {
+            if !manager.allPermissionsGranted {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text(L("perm.runningVersion", appMetadata.version, appMetadata.build))
+                        .font(.subheadline.weight(.semibold))
+                    Text(Bundle.main.bundleURL.path)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .textSelection(.enabled)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Text(L("perm.addHelp"))
+                        .font(.caption)
+                        .fixedSize(horizontal: false, vertical: true)
                     Text(L("perm.staleHelp"))
                         .font(.caption)
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
+                    Button(L("perm.showInFinder")) {
+                        manager.revealApplicationInFinder()
+                    }
+                    .accessibilityIdentifier("permissions.showInFinder")
                 }
-                Button(L("perm.showInFinder")) {
-                    manager.revealApplicationInFinder()
-                }
-                .accessibilityIdentifier("permissions.showInFinder")
             }
 
             if let error = manager.inputMonitorError {
