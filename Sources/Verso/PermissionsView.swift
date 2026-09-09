@@ -11,6 +11,7 @@ import VersoCore
 /// Screen Recording is shown but NOT required for input monitoring.
 struct PermissionsView: View {
     @ObservedObject var manager: PermissionManager
+    private let appMetadata = AppMetadata.fromMainBundle()
 
     var body: some View {
         VStack(alignment: .leading, spacing: 20) {
@@ -22,9 +23,32 @@ struct PermissionsView: View {
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
 
-            VStack(spacing: 12) {
+            VStack(alignment: .leading, spacing: 12) {
                 permissionRow(category: .accessibility, state: manager.accessibilityState)
                 permissionRow(category: .screenRecording, state: manager.screenRecordingState)
+            }
+
+            VStack(alignment: .leading, spacing: 8) {
+                Text(L("perm.runningVersion", appMetadata.version, appMetadata.build))
+                    .font(.subheadline.weight(.semibold))
+                Text(Bundle.main.bundleURL.path)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .textSelection(.enabled)
+                    .fixedSize(horizontal: false, vertical: true)
+                Text(L("perm.addHelp"))
+                    .font(.caption)
+                    .fixedSize(horizontal: false, vertical: true)
+                if !manager.allPermissionsGranted {
+                    Text(L("perm.staleHelp"))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                Button(L("perm.showInFinder")) {
+                    manager.revealApplicationInFinder()
+                }
+                .accessibilityIdentifier("permissions.showInFinder")
             }
 
             if let error = manager.inputMonitorError {
@@ -56,7 +80,7 @@ struct PermissionsView: View {
             Spacer()
         }
         .padding(20)
-        .frame(minWidth: 460, idealWidth: 560, minHeight: 420)
+        .frame(minWidth: 460, idealWidth: 560, minHeight: 560)
     }
 
     private func errorDescription(_ error: GlobalInputMonitor.TapError) -> String {
@@ -69,42 +93,46 @@ struct PermissionsView: View {
     }
 
     private func permissionRow(category: PermissionCategory, state: PermissionState) -> some View {
-        HStack(spacing: 12) {
-            Image(systemName: state.isGranted ? "checkmark.circle.fill" : "xmark.circle.fill")
-                .foregroundStyle(state.isGranted ? .green : .red)
-                .font(.title3)
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 12) {
+                Image(systemName: state.isGranted ? "checkmark.circle.fill" : "xmark.circle.fill")
+                    .foregroundStyle(state.isGranted ? .green : .red)
+                    .font(.title3)
+                    .accessibilityLabel(L(state.isGranted ? "perm.allowed" : "perm.notAllowed"))
 
-            VStack(alignment: .leading, spacing: 2) {
-                Text(category.displayName)
-                    .font(.body)
-                    .fontWeight(.medium)
-                Text(description(for: category))
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-
-            Spacer()
-
-            if !state.isGranted {
-                Button(L("perm.requestAccess")) {
-                    switch category {
-                    case .accessibility:
-                        manager.requestAccessibility()
-                    case .screenRecording:
-                        manager.requestScreenRecording()
-                    }
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(category.displayName)
+                        .font(.body)
+                        .fontWeight(.medium)
+                    Text(description(for: category))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
-                .buttonStyle(.borderedProminent)
-                .controlSize(.small)
-
+            }
+            HStack {
+                if !state.isGranted {
+                    Button(L("perm.requestAccess")) {
+                        switch category {
+                        case .accessibility:
+                            manager.requestAccessibility()
+                        case .screenRecording:
+                            manager.requestScreenRecording()
+                        }
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.small)
+                }
                 Button(L("perm.openSettings")) {
-                    _ = manager.openSystemSettings(
+                    manager.openSystemSettings(
                         anchor: category.systemSettingsAnchor
                     )
                 }
                 .controlSize(.small)
+                .accessibilityIdentifier("permissions.setup.\(category.rawValue)")
             }
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
         .padding(12)
         .background(Color.primary.opacity(0.05))
         .cornerRadius(8)

@@ -21,6 +21,7 @@ mkdir -p "$APP_DIR/Contents/MacOS"
 cp "$BIN_DIR/Verso" "$APP_DIR/Contents/MacOS/Verso"
 cp Resources/Info.plist "$APP_DIR/Contents/Info.plist"
 mkdir -p "$APP_DIR/Contents/Resources"
+cp Resources/AppIcon.icns "$APP_DIR/Contents/Resources/AppIcon.icns"
 for loc in en tr; do
   mkdir -p "$APP_DIR/Contents/Resources/$loc.lproj"
   cp "Sources/VersoCore/Resources/$loc.lproj/Localizable.strings" "$APP_DIR/Contents/Resources/$loc.lproj/Localizable.strings"

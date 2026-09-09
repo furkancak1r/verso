@@ -153,3 +153,11 @@
 
 "overlay.zoomNote" = "Pencereyi büyüt";
 "overlay.zoomHelp" = "Özgün pencereyi büyütün veya önceki boyutuna döndürün.";
+
+"perm.runningVersion" = "Çalışan kopya: Verso %@ (derleme %@)";
+"perm.addHelp" = "Ayarları Aç’ı seçin. İzin listesinin altındaki + düğmesine basın, Verso.app’i seçip Aç’a tıklayın. Dosya seçicide ⇧⌘G ile yukarıdaki uygulama yolunu girebilirsiniz. Buradaki yolu seçip kopyalayabilirsiniz.";
+"perm.staleHelp" = "Kırmızı, macOS’un çalışan bu kopyaya izin vermediğini gösterir. Önce diğer Verso kopyalarını kapatın. Eski kayıt zaten etkinse Ayarlar’dan kaldırıp bu kopyayı + ile ekleyin; ardından Verso’yu kapatıp açın.";
+"perm.showInFinder" = "Verso’yu Finder’da Göster";
+"perm.appUnavailable" = "Çalışan Verso.app bulunamadı. Kurulu uygulamayı açıp yeniden deneyin.";
+"perm.allowed" = "macOS çalışan bu kopyaya izin veriyor";
+"perm.notAllowed" = "macOS çalışan bu kopyaya izin vermedi";

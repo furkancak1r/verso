@@ -2,6 +2,28 @@
 
 This is a verification record, not a claim that every application exposes usable Accessibility metadata. A rejected ambiguous title-bar hit is safer than interfering with another app. Populate results only from observed runs.
 
+## Version 1.1.3 build 9 — permission list setup
+
+The permission cards now open only their System Settings pane. The bilingual instructions use the permission list's + button and the native application picker; the running app path remains selectable, and Show Verso in Finder remains a separate action. This follows Apple's documented [Accessibility setup](https://support.apple.com/en-gb/guide/mac-help/-mh43185/mac) and [screen recording setup](https://support.apple.com/en-ie/guide/mac-help/mchld6aa7d23/mac). Earlier Finder-selection checks did not test dropping the app into a permission list or successful registration.
+
+All 12 localization tests pass, including translation-key and format-placeholder parity. SwiftPM assembly and universal DMG/ZIP packaging passed, with strict signatures and checksums verified. Build 9 is installed, the previous app and packages are preserved, and only `/Applications/Verso.app` was relaunched. After the desktop became available, refreshing Permissions in the installed build reported both Accessibility and Screen Recording granted. No permission record was removed, reset or changed by this correction; the cause of the changed grant state was not established. The application-picker and drag/drop registration flows were not tested because the running app already had both grants.
+
+## Version 1.1.3 build 8 — automatic permission guidance
+
+Launch and explicit application reopen now refresh permissions before choosing a utility window. Missing or unknown Accessibility access opens the retained Permissions window before onboarding. Screen Recording remains optional; normal activation and permission refreshes do not reopen a dismissed window. Skipped onboarding is not marked complete, and existing save guards still apply.
+
+301 tests in 16 suites passed in a normal macOS desktop session, including native startup routing, window reuse, the save guard and optional-capture behavior. Universal packaging, icon decoding, resources and strict signature verification passed. Installed checks confirmed that Permissions appears after a cold launch with no menu action, stays closed during a Finder activation, and reopens with the same process and window when Verso is explicitly opened again. Both installed and development bundles are build 8. Two previously running copies were closed through their normal save/quit paths; only the installed copy was relaunched. Permission grants were not modified; the window is available for the user to complete setup.
+
+## Version 1.1.3 build 7 — application icon
+
+The custom window/note icon is included as `AppIcon.icns`, with a 1024px PNG source and standard/Retina representations from 16px through 1024px. Both the SwiftPM app assembly and universal Xcode release were built and verified against the source icon bytes. Release verification now checks `CFBundleIconFile`, bundle inclusion and native icon decoding before publication. The installed bundle matches the universal release and passes strict ad-hoc signature checks. macOS NSWorkspace returned the custom icon for `/Applications/Verso.app`; its rendered result was visually verified, and the running application exposes an icon. Previous release checksums still pass. The menu-bar symbol remains the native monochrome note symbol. Permission and window-control acceptance limitations below still apply.
+
+## Version 1.1.3 — permission setup
+
+Permissions now displays the running bundle’s version and path. Settings & Finder opens the selected privacy pane and reveals that exact application bundle for manual drag and drop; a separate Show Verso in Finder action is also available. Status still comes from the current process’s macOS permission APIs. An enabled Settings entry is not treated as proof of a grant, and no permission record is modified by these actions.
+
+The suite passes 300 tests in 16 suites, including exact bundle selection, rejection of unrelated/unbundled targets and translation parity. Universal 1.1.3 build 6 passed packaging, strict ad-hoc signature and checksum checks; the installed bundle matches the release. Both Turkish and English installed Permissions windows were visually checked. The first layout exposed content-sized cards with different horizontal offsets; both cards now fill the same available width and align left. The real Settings & Finder actions were activated for both permission categories, and Finder selection was verified as `/Applications/Verso.app`. The language preference was restored to System. Permission grants themselves remain unresolved until the user completes manual setup. Offscreen SwiftUI bitmap probes did not render text reliably and are not counted as visual evidence. The 1.1.2 window-control acceptance below remains pending.
+
 ## Version 1.1.2 — implementation complete, desktop acceptance pending
 
 Current source adds synchronized direct note drag/resize, retained editor on minimize/restore and Space changes, target-native fullscreen/zoom controls, localized operation feedback and one-time fresh-profile login registration. The latest full test run is recorded in `.build/phase-16-parent-test.log` (298 tests); desktop runner compile/self-check passes in `.build/phase-16-desktop-self-check.log`. Native synthetic layouts at320/360/600pt in English and Turkish are under `.build/phase16-qa/`; the320pt Turkish Back-button clipping found during visual review was fixed. These are generated view renders, not evidence of desktop drag/minimize/fullscreen behavior.

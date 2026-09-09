@@ -2,11 +2,11 @@
 
 Verso is a native macOS 14+ menu-bar scratchpad for supported application windows. Option (⌥) + left-click an eligible title-bar area to reveal its note. Escape or Back returns to the original window.
 
-Version 1.1.2 source and deterministic checks are implemented. Final installed window-control interaction checks are pending renewal of stale macOS permission grants; see the [compatibility record](docs/COMPATIBILITY.md). Earlier 1.1.1 desktop passes do not validate the new controls.
+Version 1.1.3 provides the running app’s version and selectable path in Permissions. Use Open Settings and the permission list’s + button to add the app; Show Verso in Finder is a separate convenience. Finder selection alone does not verify successful permission registration. Version 1.1.2 window controls and deterministic checks are implemented. Final installed window-control interaction checks remain pending; the installed build 9 now reports both macOS grants, as recorded in the [compatibility record](docs/COMPATIBILITY.md). Earlier 1.1.1 desktop passes do not validate the new controls.
 
-## Install Verso 1.1.2
+## Install Verso 1.1.3
 
-Run `./scripts/release.sh` with the toolchain described below to generate `build/releases/1.1.2/Verso-1.1.2-universal.dmg`. Open the DMG and drag **Verso.app** onto **Applications**. Eject the disk image, then open `/Applications/Verso.app`. The same release directory contains a ZIP and `SHA256SUMS`. Generated packages are excluded from Git. The app supports Apple Silicon and Intel and targets macOS 14 or later.
+Run `./scripts/release.sh` with the toolchain described below to generate `build/releases/1.1.3/Verso-1.1.3-universal.dmg`. Open the DMG and drag **Verso.app** onto **Applications**. Eject the disk image, then open `/Applications/Verso.app`. The same release directory contains a ZIP and `SHA256SUMS`. Generated packages are excluded from Git. The app supports Apple Silicon and Intel and targets macOS 14 or later.
 
 This free build is ad-hoc signed and is not notarized by Apple. If macOS blocks the first launch, use **System Settings → Privacy & Security → Open Anyway**. Gatekeeper stays enabled. After an update, you may need to grant Verso's permissions again; ad-hoc signing does not guarantee that macOS retains them.
 
@@ -20,9 +20,9 @@ Settings offers **System / Türkçe / English**. System is the default: Verso fo
 
 ## Run from the project
 
-For development, run `./scripts/build.sh` and open `build/Verso.app`; this builds for the host architecture. The versioned release above contains both architectures. The first-use window explains the interaction and offers permission controls. Verso has a menu-bar icon and no Dock icon.
+For development, run `./scripts/build.sh` and open `build/Verso.app`; this builds for the host architecture. The versioned release above contains both architectures. Permissions takes priority when Accessibility is missing; the first-use guide remains available afterward. Verso has a menu-bar icon and no Dock icon.
 
-1. In Verso's Permissions window, request Accessibility access so Verso can identify and follow supported windows. macOS and the user control the grant.
+1. Verso automatically opens Permissions at launch or when explicitly reopened if Accessibility access is missing. Grant it so Verso can identify and follow supported windows. Missing optional Screen Recording access alone does not open this window. macOS keeps the user in control of the grant.
 2. Option-click a supported external title bar, then type in the native note editor. Controls, content, sheets and ambiguous hits are rejected.
 3. Use Escape, Back or a completed Option-click on the note header to return. Native selection, clipboard, undo/redo, Unicode and Cmd+F are available in the editor.
 
@@ -54,7 +54,7 @@ Requires full Xcode with Swift 6.3+; verified with Xcode 26.6 / Swift 6.3.3 on m
 ./scripts/check-resources.sh
 ```
 
-The normal build script creates an ad-hoc signed `build/Verso.app` for the host architecture. Tests cover production identity, persistence, input, geometry, capture, animation, observation and native UI behavior; the latest verified suite has 298 tests in 16 suites. The resource command compiles the production image owner, checks 60 synthetic 4K cleanup cycles, and writes numeric results to `.build/resource-probe/result.json`.
+The normal build script creates an ad-hoc signed `build/Verso.app` for the host architecture. Tests cover production identity, persistence, input, geometry, capture, animation, observation and native UI behavior; the latest verified suite has 301 tests in 16 suites. The resource command compiles the production image owner, checks 60 synthetic 4K cleanup cycles, and writes numeric results to `.build/resource-probe/result.json`.
 
 The optional desktop runner is separate from those unit tests:
 
@@ -80,12 +80,12 @@ The Xcode bundle is at `.build/UniversalRelease/Build/Products/Release/Verso.app
 The one-command universal release is separate from the host-architecture build:
 
 ```bash
-./scripts/release.sh  # xcodebuild arm64+x86_64, staged verify, publish build/releases/1.1.2/
+./scripts/release.sh  # xcodebuild arm64+x86_64, staged verify, publish build/releases/1.1.3/
 ```
 
-It builds Xcode for `arm64`/`x86_64`, verifies bundle identity `com.verso.app`, version 1.1.2 (build 4), both architectures, English/Turkish resources and the strict ad-hoc signature in a unique staging directory. It then creates a UDZO/HFS+ DMG containing the app, an Applications symlink and a bilingual installation guide, plus ZIP and SHA-256 checksums. Only a completely validated release is published. Previous releases are preserved; a failed build does not replace them. The script does not modify the running app, `/Applications`, preferences or notes.
+It builds Xcode for `arm64`/`x86_64`, verifies bundle identity `com.verso.app`, version 1.1.3 (build 9), both architectures, English/Turkish resources and the strict ad-hoc signature in a unique staging directory. It then creates a UDZO/HFS+ DMG containing the app, an Applications symlink and a bilingual installation guide, plus ZIP and SHA-256 checksums. Only a completely validated release is published. Previous releases are preserved; a failed build does not replace them. The script does not modify the running app, `/Applications`, preferences or notes.
 
-The previous 1.1.1 app passed a 20-stage interaction run in both languages. Version 1.1.2 has expanded direct-pointer and window-control smoke checks, but those checks have not yet passed on the installed app: its ad-hoc signature currently has stale Accessibility and Screen Recording grants. Do not treat historical runs as acceptance for 1.1.2. See the compatibility record for current build, package and permission evidence.
+The previous 1.1.1 app passed a 20-stage interaction run in both languages. Version 1.1.2 has expanded direct-pointer and window-control smoke checks, but those checks have not yet completed on the installed app. Installed build 9 now reports both Accessibility and Screen Recording granted. Do not treat historical runs as acceptance for the newer window controls. See the compatibility record for current build, package and permission evidence.
 
 The free package can be shared with the first-launch instructions above. Apple-recognized Developer ID signing and notarization require the owner's Apple Developer Program membership; see [Apple's Developer ID documentation](https://developer.apple.com/developer-id/). No signing credentials or login-item registration were configured by the build.
 
@@ -96,3 +96,5 @@ The free package can be shared with the first-launch instructions above. Apple-r
 - `Tests/VersoCoreTests`: deterministic production behavior and synthetic native checks.
 - `scripts`: build, tests and the isolated resource measurement.
 - `docs`: observed compatibility results, performance evidence and remaining desktop protocols.
+
+The application icon is bundled as `Resources/AppIcon.icns` in both build paths; the editable 1024px source is `Resources/AppIcon.png`. The ICNS contains standard and Retina sizes from 16px through 1024px. Release verification checks the bundle reference, exact icon bytes and native icon decoding.

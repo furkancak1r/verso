@@ -1,12 +1,12 @@
 #!/bin/bash
-# release.sh — One-command native macOS 14+ universal release for Verso v1.1.2.
+# release.sh — One-command native macOS 14+ universal release for Verso v1.1.3.
 # No dependencies beyond stock macOS tools: xcodebuild, ditto, hdiutil,
 # codesign, lipo, plutil, shasum. No Finder-layout automation, no uploads,
 # no notarization claims. The app is ad-hoc signed; its first launch can
 # require the normal macOS Open Anyway confirmation.
 #
-# Output: build/releases/1.1.2/ with Verso.app, Verso-1.1.2-universal.dmg,
-# Verso-1.1.2-universal.zip and SHA256SUMS.
+# Output: build/releases/1.1.3/ with Verso.app, Verso-1.1.3-universal.dmg,
+# Verso-1.1.3-universal.zip and SHA256SUMS.
 #
 # Safety: everything builds and validates under .build staging; the complete
 # release directory is published only after all checks pass. A previous
@@ -17,8 +17,8 @@
 # mapfile, ${var,,} or other newer features.
 set -euo pipefail
 
-VERSION="1.1.2"
-BUILD="4"
+VERSION="1.1.3"
+BUILD="9"
 BUNDLE_ID="com.verso.app"
 DMG_NAME="Verso-${VERSION}-universal.dmg"
 ZIP_NAME="Verso-${VERSION}-universal.zip"
@@ -94,6 +94,14 @@ GOT_VER="$(/usr/bin/plutil -extract CFBundleShortVersionString raw "$PAYLOAD/Ver
 GOT_BUILD="$(/usr/bin/plutil -extract CFBundleVersion raw "$PAYLOAD/Verso.app/Contents/Info.plist")" \
     || fail "cannot read CFBundleVersion"
 [ "$GOT_BUILD" = "$BUILD" ] || fail "build mismatch: $GOT_BUILD"
+GOT_ICON="$(/usr/bin/plutil -extract CFBundleIconFile raw "$PAYLOAD/Verso.app/Contents/Info.plist")" \
+    || fail "cannot read CFBundleIconFile"
+[ "$GOT_ICON" = "AppIcon.icns" ] || fail "app icon reference mismatch: $GOT_ICON"
+cmp -s "$PROJECT_DIR/Resources/AppIcon.icns" "$PAYLOAD/Verso.app/Contents/Resources/AppIcon.icns" \
+    || fail "app icon missing or different from source"
+iconutil -c iconset "$PAYLOAD/Verso.app/Contents/Resources/AppIcon.icns" -o "$STAGING/icon-check.iconset" \
+    || fail "app icon cannot be decoded"
+[ -f "$STAGING/icon-check.iconset/icon_512x512@2x.png" ] || fail "1024px app icon missing"
 ARCHS="$(lipo -archs "$PAYLOAD/Verso.app/Contents/MacOS/Verso")" || fail "lipo failed"
 case "$ARCHS" in *arm64*) ;; *) fail "missing arm64 slice (got: $ARCHS)" ;; esac
 case "$ARCHS" in *x86_64*) ;; *) fail "missing x86_64 slice (got: $ARCHS)" ;; esac

@@ -14,7 +14,7 @@ final class PermissionManager: ObservableObject {
     @Published var screenRecordingState: PermissionState = .unknown
     /// Last tap creation/runtime error from the input monitor, if any.
     @Published var inputMonitorError: GlobalInputMonitor.TapError?
-    /// Failure opening a user-facing Privacy pane, if any.
+    /// Failure opening a Privacy pane or revealing the running app, if any.
     @Published var systemSettingsError: String?
     var onRefresh: (() -> Void)?
 
@@ -71,6 +71,24 @@ final class PermissionManager: ObservableObject {
             ? nil
             : L("perm.settingsOpenFailed")
         return opened
+    }
+
+    /// Reveal this process's bundle, never a same-named app from another location.
+    @discardableResult
+    func revealApplicationInFinder(
+        bundle: Bundle = .main,
+        select: ([URL]) -> Void = { NSWorkspace.shared.activateFileViewerSelecting($0) }
+    ) -> Bool {
+        let url = bundle.bundleURL
+        guard url.pathExtension.lowercased() == "app",
+              bundle.bundleIdentifier == "com.verso.app",
+              FileManager.default.fileExists(atPath: url.path) else {
+            systemSettingsError = L("perm.appUnavailable")
+            return false
+        }
+        systemSettingsError = nil
+        select([url])
+        return true
     }
 
     /// Check if all required permissions are granted.

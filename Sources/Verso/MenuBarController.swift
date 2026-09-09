@@ -13,8 +13,8 @@ import VersoCore
 @MainActor
 final class MenuBarController: NSObject {
     private let statusItem: NSStatusItem
-    private var permissionsWindow: NSWindow?
-    private var onboardingWindow: NSWindow?
+    private(set) var permissionsWindow: NSWindow?
+    private(set) var onboardingWindow: NSWindow?
     private var settingsWindow: NSWindow?
     private let permissionManager: PermissionManager
     private let settingsStore: SettingsStore
@@ -196,6 +196,15 @@ final class MenuBarController: NSObject {
     }
 
     // MARK: - Actions
+
+    /// Called only after a launch/reopen permission refresh, never on activation.
+    func showStartupWindow() {
+        if !permissionManager.accessibilityState.isGranted {
+            _ = presentPermissions()
+        } else if settingsStore.shouldShowOnboarding {
+            _ = showOnboardingForFirstUse()
+        }
+    }
 
     @objc private func showPermissions() {
         _ = presentPermissions()

@@ -153,3 +153,11 @@
 
 "overlay.zoomNote" = "Zoom window";
 "overlay.zoomHelp" = "Zoom the original window or restore its previous size.";
+
+"perm.runningVersion" = "Running copy: Verso %@ (build %@)";
+"perm.addHelp" = "Open Settings, click + below the permission list, then choose Verso.app and click Open. In the file picker, use Shift-Command-G to enter the application path shown above. You can select and copy the path here.";
+"perm.staleHelp" = "Red means macOS has not granted access to this running copy. Close other copies of Verso first. If an older entry is already enabled, remove it in Settings and add this copy with +, then quit and reopen Verso.";
+"perm.showInFinder" = "Show Verso in Finder";
+"perm.appUnavailable" = "The running Verso.app could not be found. Open the installed application and try again.";
+"perm.allowed" = "macOS grants access to this running copy";
+"perm.notAllowed" = "macOS has not granted access to this running copy";

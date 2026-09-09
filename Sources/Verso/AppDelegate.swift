@@ -65,6 +65,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         registerDismissalObservers()
         registerActivationObservers()
         refreshInputMonitoring()
+        menuBarController?.showStartupWindow()
+    }
+
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        refreshInputMonitoring()
+        menuBarController?.showStartupWindow()
+        return true
     }
 
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
@@ -149,9 +156,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
         )
 
-        if settingsStore.shouldShowOnboarding {
-            _ = menuBarController?.showOnboardingForFirstUse()
-        }
     }
 
     @discardableResult
