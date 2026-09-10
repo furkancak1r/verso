@@ -1,12 +1,12 @@
 #!/bin/bash
-# release.sh — One-command native macOS 14+ universal release for Verso v1.2.0.
+# release.sh — One-command native macOS 14+ universal release for Verso v1.2.3.
 # No dependencies beyond stock macOS tools: xcodebuild, ditto, hdiutil,
 # codesign, lipo, plutil, shasum. No Finder-layout automation, no uploads,
 # no notarization claims. The app is signed with the pinned certificate; its first launch can
 # require the normal macOS Open Anyway confirmation.
 #
-# Output: build/releases/1.2.0/ with Verso.app, Verso-1.2.0-universal.dmg,
-# Verso-1.2.0-universal.zip and SHA256SUMS.
+# Output: build/releases/1.2.3/ with Verso.app, Verso-1.2.3-universal.dmg,
+# Verso-1.2.3-universal.zip and SHA256SUMS.
 #
 # Safety: everything builds and validates under .build staging; the complete
 # release directory is published only after all checks pass. A previous
@@ -17,8 +17,8 @@
 # mapfile, ${var,,} or other newer features.
 set -euo pipefail
 
-VERSION="1.2.0"
-BUILD="14"
+VERSION="1.2.3"
+BUILD="17"
 BUNDLE_ID="com.verso.app"
 DMG_NAME="Verso-${VERSION}-universal.dmg"
 ZIP_NAME="Verso-${VERSION}-universal.zip"

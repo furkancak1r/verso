@@ -999,6 +999,7 @@ final class FlipOverlayWindowController: NSObject, NSWindowDelegate {
         // resizable edges + movable drag are native AppKit, traffic lights
         // are header dots wired to the retained AX target.
         window.isOpaque = false
+        window.animationBehavior = .none
         window.backgroundColor = .clear
         window.hasShadow = false
         window.alphaValue = 0.0
@@ -1262,8 +1263,8 @@ final class FlipOverlayWindowController: NSObject, NSWindowDelegate {
             return
         }
 
-        // nil capture → immediate close/restore (no animation).
-        guard let packet else {
+        // Respect a Reduce Motion change while the capture was in flight too.
+        guard let packet, !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion else {
             immediateReturnClose(window: window, generation: generation)
             return
         }
@@ -1284,22 +1285,33 @@ final class FlipOverlayWindowController: NSObject, NSWindowDelegate {
         )
         let faceFrame = CGRect(origin: faceOrigin, size: targetFrame.size)
 
+        // Snapshot at the current note size, while its native editor is still
+        // tightly laid out. Do not expose the live editor in the larger canvas.
+        contentView.prepareReverse(hasSnapshot: true)
+        guard contentView.hasNoteSnapshot else {
+            immediateReturnClose(window: window, generation: generation)
+            return
+        }
+
         do {
             try lifecycle.transition(to: .flippingToWindow)
 
-            // Expand canvas, install backdrop + fresh front image.
+            // Lock face geometry before resizing the window. Commit the
+            // snapshot, backdrop and canvas together without implicit motion.
+            CATransaction.begin()
+            CATransaction.setDisableActions(true)
             window.hasShadow = false
-            window.setFrame(canvasFrameAppKit, display: false)
             contentView.installExpandedLayout(faceFrame: faceFrame)
+            window.setFrame(canvasFrameAppKit, display: false, animate: false)
             contentView.configureFaceShadow()
             backdropResource.attach(packet.backdropImage, to: contentView.backdropLayer)
             contentView.showBackdrop()
 
-            contentView.prepareReverse(hasSnapshot: true)
             captureResource.clear()
             captureResource.attach(packet.windowImage, to: contentView.frontCaptureLayer)
 
             window.ignoresMouseEvents = true
+            CATransaction.commit()
 
             let depth = max(
                 FlipAnimationController.defaultPerspectiveDepth,

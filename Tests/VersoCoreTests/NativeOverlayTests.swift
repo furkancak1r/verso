@@ -553,3 +553,92 @@ extension NativeOverlayTests {
         #expect(scroll.documentView!.frame.width > scroll.contentView.bounds.width)
     }
 }
+
+extension NativeOverlayTests {
+    @Test("Reverse preparation freezes the tight note before the canvas expands")
+    func reversePreparationPreservesTightSnapshot() throws {
+        _ = NSApplication.shared
+        let content = OverlayContentView(appName: "Synthetic", windowTitle: nil,
+                                        appIcon: nil, initialText: "Closing note", backAction: {})
+        let window = NSWindow(contentRect: NSRect(x: 200, y: 200, width: 600, height: 400),
+                              styleMask: [.borderless], backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        window.contentView = content
+        content.revealNoteSurface()
+        content.layoutSubtreeIfNeeded()
+        defer { content.clearAction(); window.close() }
+        let editor = try #require(descendants(content).compactMap { $0 as? NativeNoteEditor }.first)
+        editor.textView.setSelectedRange(NSRange(location: 2, length: 3))
+        content.prepareReverse(hasSnapshot: true)
+        #expect(content.hasNoteSnapshot)
+        #expect(!content.flipContainerLayer.isHidden)
+        #expect(!content.noteSurfaceLayer.isHidden)
+        #expect(editor.isHiddenOrHasHiddenAncestor)
+        let bitmap = try #require(content.noteSurfaceLayer.sublayers?.first)
+        let snapshot = try #require(bitmap.contents) as AnyObject
+        #expect(bitmap.bounds.size == NSSize(width: 600, height: 400))
+        content.installExpandedLayout(faceFrame: NSRect(x: 100, y: 100, width: 600, height: 400))
+        window.setFrame(NSRect(x: 100, y: 100, width: 800, height: 600), display: false, animate: false)
+        let expandedSnapshot = try #require(bitmap.contents) as AnyObject
+        #expect(expandedSnapshot === snapshot)
+        #expect(bitmap.bounds.size == NSSize(width: 600, height: 400))
+        #expect(content.flipContainerLayer.frame == NSRect(x: 100, y: 100, width: 600, height: 400))
+        #expect(editor.text == "Closing note")
+        #expect(editor.textView.selectedRange() == NSRange(location: 2, length: 3))
+        content.restoreTightLayout()
+        #expect(!content.hasNoteSnapshot)
+    }
+
+    @Test("Tab hover and press differ, preserve editor focus and clear on exit, disable and detach")
+    func tabHoverLifecycle() throws {
+        _ = NSApplication.shared
+        let content = OverlayContentView(appName: "Synthetic", windowTitle: nil, appIcon: nil, initialText: "unchanged", backAction: {})
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 640, height: 360), styleMask: [.borderless], backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        window.contentView = content
+        content.revealNoteSurface()
+        let id = UUID()
+        content.configureTabs([OverlayNoteTab(id: id, text: "unchanged", pinned: false)], selectedID: id, onAdd: {}, onSelect: { _ in }, onClose: { _ in })
+        content.layoutSubtreeIfNeeded()
+        defer { content.clearAction(); window.close() }
+        let editor = try #require(descendants(content).compactMap { $0 as? NativeNoteEditor }.first)
+        #expect(window.makeFirstResponder(editor.textView))
+        editor.textView.setSelectedRange(NSRange(location: 1, length: 2))
+        let close = try #require(descendants(content).compactMap { $0 as? NSButton }.first { $0.accessibilityIdentifier() == "overlay.closeTab.\(id.uuidString)" })
+        let entered = try #require(NSEvent.enterExitEvent(with: .mouseEntered, location: .zero, modifierFlags: [], timestamp: 0, windowNumber: window.windowNumber, context: nil, eventNumber: 0, trackingNumber: 0, userData: nil))
+        let exited = try #require(NSEvent.enterExitEvent(with: .mouseExited, location: .zero, modifierFlags: [], timestamp: 0, windowNumber: window.windowNumber, context: nil, eventNumber: 0, trackingNumber: 0, userData: nil))
+        func pixels() throws -> Data {
+            let bitmap = try #require(close.bitmapImageRepForCachingDisplay(in: close.bounds))
+            close.cacheDisplay(in: close.bounds, to: bitmap)
+            return try #require(bitmap.representation(using: .png, properties: [:]))
+        }
+        for name in [NSAppearance.Name.aqua, .darkAqua] {
+            content.appearance = NSAppearance(named: name)
+            close.mouseExited(with: exited)
+            let idle = try pixels()
+            close.mouseEntered(with: entered)
+            let hover = try pixels()
+            #expect(hover != idle)
+            close.isHighlighted = true
+            #expect(try pixels() != hover)
+            close.isHighlighted = false
+            close.mouseExited(with: exited)
+            #expect(try pixels() == idle)
+            close.isEnabled = false
+            let disabled = try pixels()
+            close.mouseEntered(with: entered)
+            #expect(try pixels() == disabled)
+            close.isEnabled = true
+            close.mouseEntered(with: entered)
+            let row = try #require(close.superview as? NSStackView)
+            row.removeArrangedSubview(close)
+            close.removeFromSuperview()
+            row.addArrangedSubview(close)
+            content.layoutSubtreeIfNeeded()
+            #expect(try pixels() == idle)
+            #expect(window.firstResponder === editor.textView)
+            #expect(editor.textView.selectedRange() == NSRange(location: 1, length: 2))
+            #expect(editor.text == "unchanged")
+        }
+    }
+}

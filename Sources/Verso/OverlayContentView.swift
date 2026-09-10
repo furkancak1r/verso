@@ -249,7 +249,7 @@ final class OverlayContentView: NSView {
     var hasNoteSnapshot: Bool { noteBitmapLayer.contents != nil }
 
     func revealNoteSurface() {
-        let transitioning = flipContainerFrameOverride != nil
+        let transitioning = flipContainerFrameOverride != nil || hasNoteSnapshot
         frontSurfaceView.isHidden = true
         frontFaceOuterView.isHidden = true
         noteSurfaceView.isHidden = transitioning
@@ -274,7 +274,7 @@ final class OverlayContentView: NSView {
         revealFrontSurface()
     }
 
-    /// Keep the real editor visible until both fresh external captures are ready.
+    /// Freeze the tight editor before the owner expands the animation canvas.
     func prepareReverse(hasSnapshot: Bool) {
         if hasSnapshot { snapshotNoteSurface() }
         revealNoteSurface()
@@ -546,7 +546,7 @@ private final class OverlayNoteSurfaceView: NSView {
     private let editorContainer = NSView()
     private let tabScroll = NSScrollView()
     private let tabStack = NSStackView()
-    private let addTabButton = NSButton()
+    private let addTabButton = NoteTabButton()
     private var tabHeight: NSLayoutConstraint!
     private var tabEditors: [UUID: NativeNoteEditor] = [:]
     private var tabs: [OverlayNoteTab] = []
@@ -844,12 +844,14 @@ private final class OverlayNoteSurfaceView: NSView {
         tabScroll.borderType = .noBorder
         tabScroll.setAccessibilityLabel(L("tabs.list"))
         tabStack.orientation = .horizontal
-        tabStack.spacing = 5
+        tabStack.spacing = 6
         tabStack.alignment = .centerY
         tabStack.translatesAutoresizingMaskIntoConstraints = false
         tabScroll.documentView = tabStack
-        addTabButton.image = NSImage(systemSymbolName: "plus", accessibilityDescription: L("tabs.new"))
+        addTabButton.image = NSImage(systemSymbolName: "plus", accessibilityDescription: L("tabs.new"))?.withSymbolConfiguration(NSImage.SymbolConfiguration(pointSize: 12, weight: .medium))
         addTabButton.bezelStyle = .rounded
+        addTabButton.isBordered = false
+        addTabButton.contentTintColor = .labelColor
         addTabButton.toolTip = L("tabs.newHelp")
         addTabButton.setAccessibilityLabel(L("tabs.new"))
         addTabButton.setAccessibilityIdentifier("overlay.newTab")
@@ -866,7 +868,8 @@ private final class OverlayNoteSurfaceView: NSView {
             tabStack.heightAnchor.constraint(equalTo: tabScroll.contentView.heightAnchor),
             addTabButton.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -16),
             addTabButton.centerYAnchor.constraint(equalTo: tabScroll.centerYAnchor),
-            addTabButton.widthAnchor.constraint(equalToConstant: 30)
+            addTabButton.widthAnchor.constraint(equalToConstant: 28),
+            addTabButton.heightAnchor.constraint(equalToConstant: 28)
         ])
     }
 
@@ -878,10 +881,13 @@ private final class OverlayNoteSurfaceView: NSView {
         tabTargets.removeAll()
         tabButtons.removeAll()
         for tab in tabs {
-            let select = NSButton(title: "", target: nil, action: nil)
+            let isSelected = tab.id == selectedTabID
+            let select = NoteTabButton(title: "", target: nil, action: nil)
             select.bezelStyle = .rounded
-            select.setButtonType(.pushOnPushOff)
-            select.state = tab.id == selectedTabID ? .on : .off
+            select.isBordered = false
+            select.setButtonType(.momentaryPushIn)
+            select.contentTintColor = isSelected ? .alternateSelectedControlTextColor : .labelColor
+            select.hoverTintColor = isSelected ? .black : .labelColor
             select.font = .systemFont(ofSize: 12, weight: tab.id == selectedTabID ? .semibold : .regular)
             select.lineBreakMode = .byTruncatingTail
             select.setAccessibilityIdentifier("overlay.tab.\(tab.id.uuidString)")
@@ -889,9 +895,12 @@ private final class OverlayNoteSurfaceView: NSView {
             let selectTarget = ClosureTarget { [weak self] in self?.onSelectTab?(tab.id) }
             select.target = selectTarget
             select.action = #selector(ClosureTarget.fire)
-            let close = NSButton(image: NSImage(systemSymbolName: "xmark", accessibilityDescription: L("tabs.close"))!, target: nil, action: nil)
+            let close = NoteTabButton(image: NSImage(systemSymbolName: "xmark", accessibilityDescription: L("tabs.close"))!, target: nil, action: nil)
+            close.image = close.image?.withSymbolConfiguration(NSImage.SymbolConfiguration(pointSize: 10, weight: .semibold))
             close.bezelStyle = .inline
             close.isBordered = false
+            close.contentTintColor = select.contentTintColor
+            close.hoverTintColor = select.hoverTintColor
             close.toolTip = L("tabs.closeHelp")
             close.setAccessibilityLabel(L("tabs.close"))
             close.setAccessibilityIdentifier("overlay.closeTab.\(tab.id.uuidString)")
@@ -904,8 +913,26 @@ private final class OverlayNoteSurfaceView: NSView {
             row.spacing = 2
             row.orientation = .horizontal
             row.alignment = .centerY
+            row.edgeInsets = NSEdgeInsets(top: 2, left: 6, bottom: 2, right: 6)
+            let background = NSBox()
+            background.boxType = .custom
+            background.titlePosition = .noTitle
+            background.borderWidth = isSelected ? 0 : 0.5
+            background.borderColor = .separatorColor
+            background.cornerRadius = 8
+            background.fillColor = isSelected ? .controlAccentColor : .controlBackgroundColor
+            background.setAccessibilityElement(false)
+            background.translatesAutoresizingMaskIntoConstraints = false
+            row.addSubview(background, positioned: .below, relativeTo: nil)
+            NSLayoutConstraint.activate([
+                background.leadingAnchor.constraint(equalTo: row.leadingAnchor),
+                background.trailingAnchor.constraint(equalTo: row.trailingAnchor),
+                background.topAnchor.constraint(equalTo: row.topAnchor),
+                background.bottomAnchor.constraint(equalTo: row.bottomAnchor)
+            ])
             select.widthAnchor.constraint(equalToConstant: 150).isActive = true
-            close.widthAnchor.constraint(equalToConstant: 20).isActive = true
+            close.widthAnchor.constraint(equalToConstant: 24).isActive = true
+            close.heightAnchor.constraint(equalToConstant: 24).isActive = true
             tabStack.addArrangedSubview(row)
         }
         updateTabTitles()
@@ -1183,6 +1210,61 @@ private final class OverlayNoteSurfaceView: NSView {
         onSelectTab = nil
         onCloseTab = nil
         tabTargets.removeAll()
+    }
+}
+
+/// Native button input, focus and accessibility with a contrast-preserving hover fill.
+@MainActor
+private final class NoteTabButton: NSButton {
+    var hoverTintColor: NSColor = .labelColor
+    private var hoverTrackingArea: NSTrackingArea?
+    private var pointerInside = false {
+        didSet { if pointerInside != oldValue { needsDisplay = true } }
+    }
+
+    override var isEnabled: Bool {
+        didSet {
+            if !isEnabled { pointerInside = false }
+            needsDisplay = true
+        }
+    }
+
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        if let hoverTrackingArea { removeTrackingArea(hoverTrackingArea) }
+        let area = NSTrackingArea(rect: .zero,
+                                 options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect],
+                                 owner: self, userInfo: nil)
+        addTrackingArea(area)
+        hoverTrackingArea = area
+        if let window, window.isVisible, !isHiddenOrHasHiddenAncestor, isEnabled {
+            pointerInside = visibleRect.contains(convert(window.mouseLocationOutsideOfEventStream, from: nil))
+        } else {
+            pointerInside = false
+        }
+    }
+
+    override func mouseEntered(with event: NSEvent) {
+        super.mouseEntered(with: event)
+        pointerInside = isEnabled
+    }
+
+    override func mouseExited(with event: NSEvent) {
+        super.mouseExited(with: event)
+        pointerInside = false
+    }
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        if window == nil { pointerInside = false }
+    }
+
+    override func draw(_ dirtyRect: NSRect) {
+        if isEnabled && (pointerInside || isHighlighted) {
+            hoverTintColor.withAlphaComponent(isHighlighted ? 0.22 : 0.12).setFill()
+            NSBezierPath(roundedRect: bounds.insetBy(dx: 1, dy: 1), xRadius: 5, yRadius: 5).fill()
+        }
+        super.draw(dirtyRect)
     }
 }
 

@@ -2,6 +2,12 @@
 
 Verso is a native macOS 14+ menu-bar scratchpad for supported application windows. Option (⌥) + left-click an eligible title-bar area to reveal its note. Escape or Back returns to the original window.
 
+Version 1.2.3 freezes the note at its current size before expanding the return-animation canvas and disables additional AppKit window animations. Closing keeps the note snapshot and face geometry together; Reduce Motion and failed snapshots return without a flip.
+
+Version 1.2.2 adds hover and pressed feedback to tab, close and new-tab buttons, with larger close targets, smaller symbols and clearer inactive-tab outlines. Hover keeps the editor focused and clears when disabled or detached.
+
+Version 1.2.1 places the close button inside each note tab’s rounded background.
+
 Version 1.2.0 adds application-wide note tabs. All windows of Chrome, for example, share Chrome’s tabs; other applications keep separate notes. Use **+ / ⌘T** to add a note, **Control+Tab / Control+Shift+Tab** to switch, and **× / ⌘W** to close a tab. Closing a nonempty tab moves its note to Archive; closing an empty tab discards it. Closing the last tab leaves one new blank tab. The red window control, Back and Escape return to the source window.
 
 Tab switches retain each native editor’s text, selection and Undo/Redo history while the overlay remains open. Saving must succeed before switching or closing tabs. Blank tabs are never persisted. Tab order uses creation date; custom reordering and undo history across overlay/process restarts are not supported.
@@ -10,9 +16,9 @@ Version 1.1.4 keeps new blank and whitespace-only notes out of storage. Clearing
 
 Permissions shows setup instructions, the running app’s version and its selectable path only while either permission is missing. Use Open Settings and the permission list’s + button to add the app; Show Verso in Finder is a separate convenience. Finder selection alone does not verify successful permission registration. Version 1.1.2 window controls and deterministic checks are implemented. Final installed window-control interaction checks remain pending; current installed permission evidence is recorded in the [compatibility record](docs/COMPATIBILITY.md). Earlier 1.1.1 desktop passes do not validate the new controls.
 
-## Install Verso 1.2.0
+## Install Verso 1.2.3
 
-Run `./scripts/release.sh` with the toolchain described below to generate `build/releases/1.2.0/Verso-1.2.0-universal.dmg`. Open the DMG and drag **Verso.app** onto **Applications**. Eject the disk image, then open `/Applications/Verso.app`. The same release directory contains a ZIP and `SHA256SUMS`. Generated packages are excluded from Git. The app supports Apple Silicon and Intel and targets macOS 14 or later.
+Run `./scripts/release.sh` with the toolchain described below to generate `build/releases/1.2.3/Verso-1.2.3-universal.dmg`. Open the DMG and drag **Verso.app** onto **Applications**. Eject the disk image, then open `/Applications/Verso.app`. The same release directory contains a ZIP and `SHA256SUMS`. Generated packages are excluded from Git. The app supports Apple Silicon and Intel and targets macOS 14 or later.
 
 The packaging scripts now require one persistent, self-signed code-signing certificate. The package is free and is not notarized by Apple. If macOS blocks the first launch, use **System Settings → Privacy & Security → Open Anyway**. The initial migration from the old ad-hoc signature may require one new permission grant. On the tested Mac, both permissions survived the installed build 12 → 13 update without a new access request. See the compatibility record for the exact runtime checks and remaining limits. Gatekeeper stays enabled.
 
@@ -97,10 +103,10 @@ The Xcode bundle is at `.build/UniversalRelease/Build/Products/Release/Verso.app
 The one-command universal release is separate from the host-architecture build:
 
 ```bash
-./scripts/release.sh  # xcodebuild arm64+x86_64, staged verify, publish build/releases/1.2.0/
+./scripts/release.sh  # xcodebuild arm64+x86_64, staged verify, publish build/releases/1.2.3/
 ```
 
-It builds Xcode for `arm64`/`x86_64`, verifies bundle identity `com.verso.app`, version 1.2.0 (build 14), both architectures, English/Turkish resources and the strict certificate-pinned signature in a unique staging directory. It then creates a UDZO/HFS+ DMG containing the app, an Applications symlink and a bilingual installation guide, plus ZIP and SHA-256 checksums. Only a completely validated release is published. Previous releases are preserved; a failed build does not replace them. The script does not modify the running app, `/Applications`, preferences or notes.
+It builds Xcode for `arm64`/`x86_64`, verifies bundle identity `com.verso.app`, version 1.2.3 (build 17), both architectures, English/Turkish resources and the strict certificate-pinned signature in a unique staging directory. It then creates a UDZO/HFS+ DMG containing the app, an Applications symlink and a bilingual installation guide, plus ZIP and SHA-256 checksums. Only a completely validated release is published. Previous releases are preserved; a failed build does not replace them. The script does not modify the running app, `/Applications`, preferences or notes.
 
 The previous 1.1.1 app passed a 20-stage interaction run in both languages. Version 1.1.2 has expanded direct-pointer and window-control smoke checks, but those checks have not yet completed on the installed app. Earlier build 9 grants did not survive later ad-hoc rebuilds. The certificate-based build 12 → 13 update preserves both grants on the tested Mac. The separate note-header drag interaction test still fails; newer window controls are not marked accepted. Do not treat historical runs as acceptance for the newer window controls. See the compatibility record for current build, package and permission evidence.
 

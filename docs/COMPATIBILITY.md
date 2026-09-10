@@ -2,6 +2,32 @@
 
 This is a verification record, not a claim that every application exposes usable Accessibility metadata. A rejected ambiguous title-bar hit is safer than interfering with another app. Populate results only from observed runs.
 
+## Closing flip preparation — 1.2.3 build 17 (2026-09-10)
+
+Reverse preparation now freezes the native note at its tight size before changing the visible window frame. The face offset is installed before expansion, and the canvas/backdrop/front-image update disables implicit layer actions. The custom overlay uses `animationBehavior = .none`; failed note snapshots and Reduce Motion enabled during capture return immediately.
+
+The new tight-snapshot regression failed on the preceding implementation: preparation discarded its snapshot and left the live editor visible. It now passes, including snapshot identity and size across expansion, editor text/selection preservation and cleanup. The full suite passes 322 tests in 16 suites (`.build/reverse-freeze-before.log`, `.build/reverse-freeze-tests.log`). Earlier geometry probes did not reproduce coordinate corruption; the reported visual effect is not claimed verified solely from these tests.
+
+Universal release and SwiftPM host builds pass. Installed, host and release bundles are 1.2.3 build17 with the existing persistent certificate; installed files match the verified release and satisfy the prior designated requirement. Previous app is preserved at `/Applications/.Verso-persistent-signing-17-f4cxw5ko/previous.app`; 1.2.1–1.2.3 DMG/ZIP checksums pass. Runtime PID 76079 reports build17 with zero utility windows. Evidence: `.build/reverse-freeze-{release,host}.log`, `.build/reverse-freeze-install-17.json`.
+
+The installed desktop attempt stopped at `loginwindow` before creating windows or submitting input (`.build/reverse-freeze-desktop.log`). Actual closing-animation visual acceptance remains pending an unlocked desktop. The separate window-drag issue remains open.
+
+## Tab hover polish — 1.2.2 build 16 (2026-09-09)
+
+Native tab, close and new-tab buttons now show hover and stronger pressed feedback. Close targets are 24 pt; inactive tabs have subtle outlines. Selected-tab feedback darkens the accent background to keep the close icon readable. AppKit still handles input, focus, disabled appearance and accessibility.
+
+All 321 Swift tests in 16 suites pass, including 18 native UI tests. The new regression covers light/dark hover and pressed pixels, clearing on exit/disable/detach, and preservation of editor focus, selection and text. Parent-inspected synthetic light/dark renders and close-button hit/action checks pass. Evidence: `.build/tab-hover-full-native.log`, `.build/tab-hover-preview-output/`.
+
+Universal release and SwiftPM host builds pass. Installed, host and release bundles are 1.2.2 build 16 and use the existing persistent certificate. The installed candidate also satisfies the previous app's designated requirement on both architectures. DMG/ZIP SHA-256 checks pass; 1.2.0 and 1.2.1 packages and the prior installed app remain preserved. Installed PID 22354 reports build 16 with zero utility windows. Evidence: `.build/tab-hover-release.log`, `.build/tab-hover-host.log`, `.build/tab-hover-install-16.json`.
+
+The installed desktop run passed capture, Unicode typing, pin feedback, Undo/Redo, Find, reopening, new-tab editing and switching back. It stopped at the next focus guard; the retry stopped before input because the macOS session was at `loginwindow`. The full installed desktop run remains pending an unlocked session (`.build/tab-hover-desktop.log`, `.build/tab-hover-desktop-retry.log`). This change does not resolve the separately recorded window-drag issue.
+
+## Tab close placement — 1.2.1 build 15 (2026-09-09)
+
+The close button now shares each tab’s rounded background, with its own native click target inside the tab. Parent-inspected synthetic light/dark renders and the close-button hit/action probe pass. Existing native overlay checks pass all 17 tests; the installed tab-specific desktop run passes all 34 stages, including capture and closing nonempty/blank tabs. The first desktop attempt stopped before input while locating its own fixture window; an unchanged-runner retry passed (`.build/tab-close-desktop-retry.log`).
+
+Installed, host and universal bundles are 1.2.1 build15, signed with the existing persistent certificate. DMG/ZIP SHA-256 checks pass; the previous 1.2.0 release and installed bundle remain preserved. Notes and tab behavior are unchanged. Evidence: `.build/tab-close-layout-tests.log`, `.build/tab-close-preview-output/`, `.build/tab-close-release.log`, `.build/tab-close-install-15.json`.
+
 ## Application tabs — 1.2.0 build 14 (2026-09-09)
 
 Application notebooks use the existing nonempty bundle identifier. Same-app windows share tabs; different apps remain separate. Legacy nonarchived notes are loaded in creation order without a schema migration. Closed nonempty tabs are archived; blank tabs stay in memory. Each open overlay retains a separate native editor/UndoManager per tab; history across overlay/process restarts is not retained.
