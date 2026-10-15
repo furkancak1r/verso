@@ -2,6 +2,30 @@
 
 This is a verification record, not a claim that every application exposes usable Accessibility metadata. A rejected ambiguous title-bar hit is safer than interfering with another app. Populate results only from observed runs.
 
+## Flip canvas below the menu bar — 1.2.4 build 19 (2026-10-15)
+
+User report on build 18: the note opened in DeepSeek Harness, but the screen slid during the flip.
+
+Cause, measured with a transparent, click-through test window on the same displays (no input sent): the flip canvas is the target frame plus a perspective margin (40–200 pt). For the DeepSeek Harness window at 66 pt from the top of the 1920×1080 primary display, the canvas reached the 30 pt menu bar. The default `NSWindow.constrainFrameRect(_:to:)` then moved the canvas 30.4 pt down (requested AppKit y 40.4, actual y 10). The window image and backdrop moved with it, so the flipping window and the desktop behind it appeared to slide down, then return when the note frame was set.
+
+Change: `FlipOverlayWindow` overrides `constrainFrameRect(_:to:)` and keeps the requested frame. Verso sets only frames that come from validated target geometry; user drags of the note still sync to the target window through Accessibility, which applies the target app's own limits.
+
+A new native test sets a canvas that overlaps the menu bar on a `FlipOverlayWindow` and requires the exact frame. The full suite passes 331 tests in 16 suites (`.build/flip-slide-tests.log`). The universal release passed strict and pinned signature checks, arm64/x86_64, DMG/ZIP checksums and the prior designated requirement on both architectures (`.build/flip-slide-release.log`); the build 18 release is preserved under `.build/release-backup-1.2.4.Ec7ISE/previous`. `.build/flip-slide-install.py` installed build 19; the build 18 app is preserved at `/Applications/.Verso-flip-slide-19-8jfnscxn/previous.app` (`.build/flip-slide-install-19.json`). Relaunched PID 74773 reports build 19, its event tap is enabled, tccd allowed Accessibility and Screen Recording, and no Permissions window opened.
+
+Not verified: the visual result of a real flip after this change.
+
+## Unified and app-drawn title rows — 1.2.4 build 18 (2026-10-15)
+
+Cause, measured with read-only Accessibility queries on macOS 27.0.1 (no input sent): Finder, Outlook and Microsoft Remote Desktop use a 52 pt unified toolbar, and the Finder title element is 52 pt tall. DeepSeek Harness (Electron) draws its own title row: nested full-window `AXGroup` elements above the web area, with traffic lights at 17–33 pt. The 1.2.3 rule accepted only a title element inside the 28 pt band or a direct `AXWindow` hit, so it rejected these clicks.
+
+Change: the title-element band is now min(60 pt, 20% of the window height). A new title-row path accepts a toolbar or group hit only when all ancestors are group, toolbar, window or application; the hit frame starts at the window top and spans the full window width (2 pt tolerance); at least two traffic-light buttons corroborate; and the hit is above two times the button-center offset (52 pt in Finder, 50 pt in DeepSeek Harness, 28 pt for a classic title bar). Controls, toolbar items, web content and traffic-light clicks still pass through.
+
+Eight new tests use the measured geometry. The full suite passes 330 tests in 16 suites (`.build/unified-titlebar-tests.log`). The universal release passed strict and pinned signature checks, arm64/x86_64 and DMG/ZIP checksums (`.build/unified-titlebar-release.log`). The new bundle satisfies the prior designated requirement on both architectures. `.build/unified-titlebar-install.py` installed it; the previous app is preserved at `/Applications/.Verso-unified-titlebar-18-h3ifi_au/previous.app` (`.build/unified-titlebar-install-18.json`). Relaunched PID 47117 reports build 18, its event tap is enabled, tccd allowed Accessibility and no Permissions window opened.
+
+A read-only rule check on the live DeepSeek Harness window accepted empty top-row points at 6, 26 and 44 pt and rejected button, pop-up and web-area points. The other windows were not on screen during this check.
+
+Not verified: a real Option-click and flip in each application; Chrome and WhatsApp (their empty tab strip or top area can resolve to a full-width group and become eligible); Screen Recording capture of these windows.
+
 ## Closing flip preparation — 1.2.3 build 17 (2026-09-10)
 
 Reverse preparation now freezes the native note at its tight size before changing the visible window frame. The face offset is installed before expansion, and the canvas/backdrop/front-image update disables implicit layer actions. The custom overlay uses `animationBehavior = .none`; failed note snapshots and Reduce Motion enabled during capture return immediately.

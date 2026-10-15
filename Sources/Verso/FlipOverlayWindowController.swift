@@ -1493,7 +1493,7 @@ final class FlipOverlayWindowController: NSObject, NSWindowDelegate {
 }
 
 @MainActor
-private final class FlipOverlayWindow: NSWindow {
+final class FlipOverlayWindow: NSWindow {
     var cancelAction: (() -> Void)?
     var headerReturnAction: (() -> Void)?
 
@@ -1501,6 +1501,18 @@ private final class FlipOverlayWindow: NSWindow {
 
     override var canBecomeKey: Bool {
         true
+    }
+
+    /// Keep every requested frame. By default AppKit moves a window that
+    /// overlaps the menu bar to below the menu bar. The flip canvas adds a
+    /// perspective margin around the target window, so for a window near the
+    /// top of the screen it overlaps the menu bar. AppKit then moved the
+    /// canvas, with the window image and backdrop, about 30 pt down, and the
+    /// screen appeared to slide during the flip. Each frame that Verso sets
+    /// comes from validated target geometry; user drags are synced to the
+    /// target window, which applies its own limits.
+    override func constrainFrameRect(_ frameRect: NSRect, to screen: NSScreen?) -> NSRect {
+        frameRect
     }
 
     override func cancelOperation(_ sender: Any?) {

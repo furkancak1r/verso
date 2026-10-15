@@ -805,3 +805,137 @@ func hitTestSmallWindowTopArea() {
     let wrongParent = HitTestEvidence.directWindow(windowFrame: w.frame, close: close, minimize: minimize, ancestors: ["AXSheet"])
     #expect(!TitleBarHitTester.hitTest(hitPoint: CGPoint(x: 400, y: 214), target: w, evidence: wrongParent))
 }
+
+// MARK: - Unified toolbar and app-drawn title rows (geometry measured on macOS 27)
+
+/// Traffic lights as measured on Finder and Outlook: 16x16 at x offsets 18, 41, 64.
+private func unifiedButtons(_ w: TargetWindowMetadata, yOffset: CGFloat = 18) -> (CGRect, CGRect, CGRect) {
+    (buttonFrame(window: w, xOffset: 18, yOffset: yOffset, width: 16, height: 16),
+     buttonFrame(window: w, xOffset: 41, yOffset: yOffset, width: 16, height: 16),
+     buttonFrame(window: w, xOffset: 64, yOffset: yOffset, width: 16, height: 16))
+}
+
+/// Toolbar/group hit evidence as the AX service reports it. Default: 52 pt full-width toolbar.
+private func rowEvidence(
+    _ w: TargetWindowMetadata,
+    role: String = "AXToolbar",
+    ancestors: [String] = ["AXWindow", "AXApplication"],
+    frame: CGRect? = nil,
+    buttons: Int = 3,
+    buttonY: CGFloat = 18
+) -> HitTestEvidence {
+    let (close, minimize, zoom) = unifiedButtons(w, yOffset: buttonY)
+    return HitTestEvidence(
+        hitRole: role,
+        ancestorRoles: ancestors,
+        closeButtonFrame: buttons > 0 ? close : nil,
+        minimizeButtonFrame: buttons > 1 ? minimize : nil,
+        zoomButtonFrame: buttons > 2 ? zoom : nil,
+        hitElementFrame: frame ?? CGRect(x: w.frame.minX, y: w.frame.minY, width: w.frame.width, height: 52)
+    )
+}
+
+private func pointIn(_ w: TargetWindowMetadata, _ dx: CGFloat, _ dy: CGFloat) -> CGPoint {
+    CGPoint(x: w.frame.minX + dx, y: w.frame.minY + dy)
+}
+
+@Test func unifiedToolbarBackgroundIsAccepted() {
+    let w = makeWindow()
+    // Finder / Remote Desktop: 52 pt toolbar, also below the old 28 pt band.
+    for dy in [CGFloat(2), 26, 40, 51] {
+        #expect(TitleBarHitTester.hitTest(hitPoint: pointIn(w, 400, dy), target: w, evidence: rowEvidence(w)))
+    }
+    // Outlook: the same row is an AXGroup.
+    #expect(TitleBarHitTester.hitTest(hitPoint: pointIn(w, 400, 40), target: w, evidence: rowEvidence(w, role: "AXGroup")))
+}
+
+@Test func appDrawnTitleRowIsAccepted() {
+    // DSH (Electron): nested full-window groups above the web area; buttons at 17..33.
+    let w = makeWindow(size: CGSize(width: 1280, height: 820))
+    let ev = rowEvidence(w, role: "AXGroup",
+                         ancestors: ["AXGroup", "AXGroup", "AXGroup", "AXGroup", "AXGroup", "AXWindow", "AXApplication"],
+                         frame: w.frame, buttonY: 17)
+    // Button center offset 25: the row ends at top + 50.
+    #expect(TitleBarHitTester.hitTest(hitPoint: pointIn(w, 600, 5), target: w, evidence: ev))
+    #expect(TitleBarHitTester.hitTest(hitPoint: pointIn(w, 600, 49), target: w, evidence: ev))
+    #expect(!TitleBarHitTester.hitTest(hitPoint: pointIn(w, 600, 50), target: w, evidence: ev))
+    #expect(!TitleBarHitTester.hitTest(hitPoint: pointIn(w, 600, 400), target: w, evidence: ev))
+}
+
+@Test func titleRowEndsAtTheTrafficLightRow() {
+    let w = makeWindow()
+    // Buttons at 18..34 put the row bottom at top + 52.
+    #expect(!TitleBarHitTester.hitTest(hitPoint: pointIn(w, 400, 52), target: w, evidence: rowEvidence(w, frame: w.frame)))
+    // A classic 28 pt title bar (buttons at 6..22) ends at top + 28.
+    let classic = rowEvidence(w, role: "AXGroup", frame: w.frame, buttonY: 6)
+    #expect(TitleBarHitTester.hitTest(hitPoint: pointIn(w, 400, 27), target: w, evidence: classic))
+    #expect(!TitleBarHitTester.hitTest(hitPoint: pointIn(w, 400, 28), target: w, evidence: classic))
+}
+
+@Test func titleRowRejectsContentAncestorsAndOtherRoles() {
+    let w = makeWindow()
+    let p = pointIn(w, 400, 20)
+    let ancestorSets: [[String]] = [
+        ["AXWebArea", "AXGroup", "AXWindow", "AXApplication"],
+        ["AXScrollArea", "AXWindow", "AXApplication"],
+        ["AXStaticText", "AXWindow", "AXApplication"],
+        ["AXSheet", "AXWindow", "AXApplication"],
+        ["AXWindow"], ["AXApplication"], []
+    ]
+    for ancestors in ancestorSets {
+        #expect(!TitleBarHitTester.hitTest(hitPoint: p, target: w, evidence: rowEvidence(w, ancestors: ancestors)))
+    }
+    for role in ["AXStaticText", "AXWindow", "AXScrollArea", "AXWebArea", "AXButton", "AXTextField", "AXRadioButton", ""] {
+        #expect(!TitleBarHitTester.hitTest(hitPoint: p, target: w, evidence: rowEvidence(w, role: role)))
+    }
+}
+
+@Test func titleRowRejectsToolbarItemsAndShiftedBars() {
+    let w = makeWindow()
+    let f = w.frame
+    let bars = [
+        CGRect(x: f.minX + 224, y: f.minY, width: 81, height: 52),       // toolbar item group
+        CGRect(x: f.minX, y: f.minY, width: f.width / 2, height: 52),    // half width
+        CGRect(x: f.minX + 100, y: f.minY, width: f.width - 100, height: 52),
+        CGRect(x: f.minX, y: f.minY + 10, width: f.width, height: 52),    // below the top edge
+        CGRect(x: f.minX, y: f.minY, width: -f.width, height: 52),        // negative raw width
+        CGRect(x: CGFloat.nan, y: f.minY, width: f.width, height: 52),
+        CGRect(x: f.minX, y: f.minY, width: f.width, height: 10)          // does not contain the hit
+    ]
+    for bar in bars {
+        #expect(!TitleBarHitTester.hitTest(hitPoint: pointIn(w, 260, 20), target: w, evidence: rowEvidence(w, frame: bar)))
+    }
+}
+
+@Test func titleRowNeedsTwoTrafficLightsAndSkipsButtonClicks() {
+    let w = makeWindow()
+    let p = pointIn(w, 400, 20)
+    #expect(!TitleBarHitTester.hitTest(hitPoint: p, target: w, evidence: rowEvidence(w, buttons: 0)))
+    #expect(!TitleBarHitTester.hitTest(hitPoint: p, target: w, evidence: rowEvidence(w, buttons: 1)))
+    #expect(TitleBarHitTester.hitTest(hitPoint: p, target: w, evidence: rowEvidence(w, buttons: 2)))
+    let (close, minimize, zoom) = unifiedButtons(w)
+    for button in [close, minimize, zoom] {
+        #expect(!TitleBarHitTester.hitTest(hitPoint: CGPoint(x: button.midX, y: button.midY), target: w, evidence: rowEvidence(w)))
+    }
+}
+
+@Test func titleRowIsLimitedOnSmallWindows() {
+    // Band = min(60, 20% of 200) = 40, so the row ends at top + 40.
+    let w = makeWindow(size: CGSize(width: 800, height: 200))
+    #expect(TitleBarHitTester.unifiedBandHeight(for: w.frame) == 40)
+    #expect(TitleBarHitTester.hitTest(hitPoint: pointIn(w, 400, 39), target: w, evidence: rowEvidence(w, frame: w.frame)))
+    #expect(!TitleBarHitTester.hitTest(hitPoint: pointIn(w, 400, 45), target: w, evidence: rowEvidence(w, frame: w.frame)))
+}
+
+@Test func unifiedTitleElementIsAccepted() {
+    // Finder / Outlook message window: a 52 pt AXStaticText title element.
+    let w = makeWindow()
+    let title = CGRect(x: w.frame.minX + 305, y: w.frame.minY, width: 355, height: 52)
+    let ev = HitTestEvidence(hitRole: "AXStaticText", ancestorRoles: ["AXWindow", "AXApplication"],
+                             hasTitleInPath: true, titleElementFrame: title)
+    #expect(TitleBarHitTester.hitTest(hitPoint: pointIn(w, 400, 40), target: w, evidence: ev))
+    let tall = HitTestEvidence(hitRole: "AXStaticText", ancestorRoles: ["AXWindow", "AXApplication"],
+                               hasTitleInPath: true,
+                               titleElementFrame: CGRect(x: title.minX, y: title.minY, width: 355, height: 70))
+    #expect(!TitleBarHitTester.hitTest(hitPoint: pointIn(w, 400, 40), target: w, evidence: tall))
+}

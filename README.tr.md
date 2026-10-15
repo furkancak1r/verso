@@ -4,7 +4,7 @@
 
 Verso, uygulama pencerelerinin arkasına notlar yerleştiren yerel bir macOS menü çubuğu uygulamasıdır. Not açmak için **desteklenen bir pencerenin başlık çubuğundaki boş alana Option (⌥) tuşuyla sol tıklayın**. Uygulamaya dönmek için **Escape** veya **Geri** düğmesini kullanın.
 
-**Güncel sürüm:** 1.2.3 (derleme 17) · **Hedef sistem:** macOS 14+ · **Universal paket:** Apple Silicon ve Intel
+**Güncel sürüm:** 1.2.4 (derleme 19) · **Hedef sistem:** macOS 14+ · **Universal paket:** Apple Silicon ve Intel
 
 ## Özellikler
 
@@ -14,11 +14,13 @@ Verso, uygulama pencerelerinin arkasına notlar yerleştiren yerel bir macOS men
 - **Yerel depolama:** otomatik kayıt, kayıt hatasında taslağı koruma ve boş ya da yalnız boşluk içeren notları kaydetmeme.
 - **Kişiselleştirme:** Türkçe ve İngilizce, Sistem/Açık/Koyu görünüm ve Girişte Başlat ayarı.
 
+1.2.4 sürümü, Option-tıklamayı araç çubuğuyla birleşik başlık çubuklarının boş alanında ve yüksek başlık öğelerinde de kabul eder. Örnekler: macOS 26 ve sonrasında Finder, Outlook ve Microsoft Uzak Masaüstü. DeepSeek Harness gibi başlık şeridini kendisi çizen uygulamalarda pencere düğmelerinin hizasındaki boş alanı kullanın. Araç çubuğu öğelerine, sekmelere, düğmelere ve web içeriğine yapılan tıklamalar uygulamaya gitmeye devam eder. Chrome ve WhatsApp denenmedi.
+
 1.2.3 sürümü, kapanış animasyonunu hazırlamadan önce notu mevcut boyutunda dondurur ve AppKit’in ek pencere animasyonlarını kapatır. Sekme kapatma düğmeleri sekmenin içinde yer alır; üzerlerine gelindiğinde ve basıldığında görsel geri bildirim verir. Kapanış değişikliğinin son görsel doğrulaması henüz tamamlanmadı; [Doğrulama ve bilinen sınırlar](#doğrulama-ve-bilinen-sınırlar) bölümüne bakın.
 
 ## Kurulum
 
-Dağıtım paketleri yerel olarak üretilir ve Git’e eklenmez. `build/releases/1.2.3/Verso-1.2.3-universal.dmg` dosyasını oluşturmak için [Kaynaktan derleme](#kaynaktan-derleme) bölümünü izleyin.
+Dağıtım paketleri yerel olarak üretilir ve Git’e eklenmez. `build/releases/1.2.4/Verso-1.2.4-universal.dmg` dosyasını oluşturmak için [Kaynaktan derleme](#kaynaktan-derleme) bölümünü izleyin.
 
 1. DMG’yi açıp **Verso.app** dosyasını **Applications (Uygulamalar)** klasörüne sürükleyin.
 2. Disk görüntüsünü çıkarın ve `/Applications/Verso.app` dosyasını açın. Verso, Dock simgesi olmadan menü çubuğunda çalışır.
@@ -87,10 +89,10 @@ Bağımsız bir fork için Anahtar Zinciri Erişimi’nin Sertifika Yardımcıs�
 `build.sh`, önceki uygulamayı koruyarak **çalışılan bilgisayarın mimarisi için `build/Verso.app`** paketini hazırlar, imzalar ve doğrular. `release.sh`, **arm64 + x86_64** mimarilerini, paketlenmiş İngilizce/Türkçe kaynakları, sürümü ve sabitlenmiş imzayı doğruladıktan sonra şu çıktıları yayımlar:
 
 ```text
-build/releases/1.2.3/
+build/releases/1.2.4/
 ├── Verso.app
-├── Verso-1.2.3-universal.dmg
-├── Verso-1.2.3-universal.zip
+├── Verso-1.2.4-universal.dmg
+├── Verso-1.2.4-universal.zip
 └── SHA256SUMS
 ```
 
@@ -109,7 +111,7 @@ Uygulama `.build/UniversalRelease/Build/Products/Release/Verso.app` yolundadır.
 
 ## Doğrulama ve bilinen sınırlar
 
-Son kayıtlı test paketi **16 grupta 322 testi** geçmiştir. 1.2.3 sürümünün universal/yerel derlemeleri, sabitlenmiş imzaları ve DMG/ZIP doğrulama toplamları geçmiştir. Kurulu uygulamadaki son masaüstü denemesi, girdi göndermeden kilit ekranında durdu; kapanış animasyonunun görsel kabulü bu nedenle bekliyor. Önceki başarılı sekme testleri, ayrı pencere kontrolü hatasını doğrulamaz. Gerçek oturum açma/yeniden başlatma, Intel/macOS 14 donanımı ve uygulama bazındaki tüm senaryolar henüz doğrulanmamıştır. Ayrıntılar [`docs/COMPATIBILITY.md`](docs/COMPATIBILITY.md), kaynak ölçümleri ise [`docs/PERFORMANCE.md`](docs/PERFORMANCE.md) dosyasındadır.
+Son kayıtlı test paketi **16 grupta 331 testi** geçmiştir (1.2.4). 1.2.3 sürümünün universal/yerel derlemeleri, sabitlenmiş imzaları ve DMG/ZIP doğrulama toplamları geçmiştir. Kurulu uygulamadaki son masaüstü denemesi, girdi göndermeden kilit ekranında durdu; kapanış animasyonunun görsel kabulü bu nedenle bekliyor. Önceki başarılı sekme testleri, ayrı pencere kontrolü hatasını doğrulamaz. Gerçek oturum açma/yeniden başlatma, Intel/macOS 14 donanımı ve uygulama bazındaki tüm senaryolar henüz doğrulanmamıştır. Ayrıntılar [`docs/COMPATIBILITY.md`](docs/COMPATIBILITY.md), kaynak ölçümleri ise [`docs/PERFORMANCE.md`](docs/PERFORMANCE.md) dosyasındadır.
 
 İsteğe bağlı masaüstü test aracı, birim testlerinden ayrıdır:
 

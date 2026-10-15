@@ -754,6 +754,13 @@ public final class AccessibilityWindowService {
         let zoomFrame  = try buttonFrame(
             win, attr: kAXZoomButtonAttribute, expectedPID: pid, windowFrame: frame, start: start)
 
+        // Title row: frame of a toolbar or group hit outside the title
+        // element. TitleBarHitTester decides with the window geometry.
+        var hitElementFrame: CGRect? = nil
+        if !hasTitleInPath, hitRole == "AXToolbar" || hitRole == "AXGroup" {
+            hitElementFrame = try axFrame(hit, start: start)
+        }
+
         guard hasBudgetRemaining(start) else { throw AXIPCError.budgetExhausted }
 
         let evidence = HitTestEvidence(
@@ -764,7 +771,8 @@ public final class AccessibilityWindowService {
             isLeafWindow: hitRole == "AXWindow",
             closeButtonFrame: closeFrame,
             minimizeButtonFrame: minFrame,
-            zoomButtonFrame: zoomFrame
+            zoomButtonFrame: zoomFrame,
+            hitElementFrame: hitElementFrame
         )
 
         // 12. TitleBarHitTester eligibility

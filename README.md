@@ -4,7 +4,7 @@
 
 Verso is a native macOS menu-bar app that puts notes behind your application windows. **Option (⌥) + left-click an empty, supported title-bar area** to open a note; press **Escape** or **Back** to return to the application.
 
-**Current version:** 1.2.3 (build 17) · **Deployment target:** macOS 14+ · **Universal package:** Apple Silicon and Intel
+**Current version:** 1.2.4 (build 19) · **Deployment target:** macOS 14+ · **Universal package:** Apple Silicon and Intel
 
 ## Features
 
@@ -14,11 +14,13 @@ Verso is a native macOS menu-bar app that puts notes behind your application win
 - **Local storage:** autosave, recovery after save failures, and no saved blank or whitespace-only notes.
 - **Personalization:** Turkish and English, System/Light/Dark appearance, and a Launch at Login setting.
 
+Version 1.2.4 also accepts Option-click on the empty background of unified toolbar title bars and on tall title elements, for example in Finder, Outlook, and Microsoft Remote Desktop on macOS 26 and later. In apps that draw their own title row, such as DeepSeek Harness, use the empty area in the row of the window buttons. Clicks on toolbar items, tabs, buttons, and web content still go to the application. Chrome and WhatsApp were not checked.
+
 Version 1.2.3 freezes the note at its current size before preparing the closing flip and disables extra AppKit window animations. Tab close buttons sit inside their tabs and show hover/pressed feedback. Final visual verification of the closing change is still pending; see [Verification and known limits](#verification-and-known-limits).
 
 ## Installation
 
-Release packages are generated locally and excluded from Git. Follow [Build from source](#build-from-source) to create `build/releases/1.2.3/Verso-1.2.3-universal.dmg`.
+Release packages are generated locally and excluded from Git. Follow [Build from source](#build-from-source) to create `build/releases/1.2.4/Verso-1.2.4-universal.dmg`.
 
 1. Open the DMG and drag **Verso.app** onto **Applications**.
 2. Eject the disk image, then open `/Applications/Verso.app`. Verso runs in the menu bar without a Dock icon.
@@ -87,10 +89,10 @@ For an independent fork, create your own Code Signing identity once with Keychai
 `build.sh` stages, signs, and verifies **`build/Verso.app` for the host architecture**, preserving the previous app. `release.sh` builds and verifies **arm64 + x86_64**, bundled English/Turkish resources, version, and the pinned signature before publishing:
 
 ```text
-build/releases/1.2.3/
+build/releases/1.2.4/
 ├── Verso.app
-├── Verso-1.2.3-universal.dmg
-├── Verso-1.2.3-universal.zip
+├── Verso-1.2.4-universal.dmg
+├── Verso-1.2.4-universal.zip
 └── SHA256SUMS
 ```
 
@@ -109,7 +111,7 @@ The app is at `.build/UniversalRelease/Build/Products/Release/Verso.app`. Select
 
 ## Verification and known limits
 
-The latest recorded suite passes **322 tests in 16 suites**. Version 1.2.3 universal/host builds, pinned signatures, and DMG/ZIP checksums passed. Its final installed desktop attempt stopped at the lock screen before input, so the closing animation’s visual acceptance remains pending. Earlier successful tab checks do not validate the separate window-control issue. Real login/reboot, Intel/macOS 14 hardware, and the full named-application matrix remain unverified. Details are in [`docs/COMPATIBILITY.md`](docs/COMPATIBILITY.md); resource measurements are in [`docs/PERFORMANCE.md`](docs/PERFORMANCE.md).
+The latest recorded suite passes **331 tests in 16 suites** (1.2.4). Version 1.2.3 universal/host builds, pinned signatures, and DMG/ZIP checksums passed. Its final installed desktop attempt stopped at the lock screen before input, so the closing animation’s visual acceptance remains pending. Earlier successful tab checks do not validate the separate window-control issue. Real login/reboot, Intel/macOS 14 hardware, and the full named-application matrix remain unverified. Details are in [`docs/COMPATIBILITY.md`](docs/COMPATIBILITY.md); resource measurements are in [`docs/PERFORMANCE.md`](docs/PERFORMANCE.md).
 
 The optional desktop runner is separate from unit tests:
 

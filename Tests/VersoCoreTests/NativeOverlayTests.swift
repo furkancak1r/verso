@@ -589,6 +589,30 @@ extension NativeOverlayTests {
         #expect(!content.hasNoteSnapshot)
     }
 
+    @Test("Flip canvas keeps its frame when it overlaps the menu bar")
+    func flipCanvasIsNotMovedBelowMenuBar() throws {
+        _ = NSApplication.shared
+        let screen = try #require(NSScreen.screens.first)
+        // Canvas for a window near the top of the screen: its perspective
+        // margin reaches the menu bar, as measured for DeepSeek Harness.
+        let canvas = NSRect(x: screen.frame.minX + 160, y: screen.frame.maxY - 1000,
+                            width: 1000, height: 1000)
+        let window = FlipOverlayWindow(contentRect: NSRect(x: canvas.minX, y: canvas.minY, width: 400, height: 300),
+                                       styleMask: [.borderless, .resizable], backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        defer { window.close() }
+        window.setFrame(canvas, display: false, animate: false)
+        #expect(window.frame == canvas)
+        let plain = NSWindow(contentRect: canvas, styleMask: [.borderless, .resizable],
+                             backing: .buffered, defer: false)
+        plain.isReleasedWhenClosed = false
+        defer { plain.close() }
+        // The default AppKit constraint is what moved the canvas (and the
+        // flipping window image) below the menu bar.
+        #expect(plain.constrainFrameRect(canvas, to: screen) != canvas
+            || screen.visibleFrame.maxY == screen.frame.maxY)
+    }
+
     @Test("Tab hover and press differ, preserve editor focus and clear on exit, disable and detach")
     func tabHoverLifecycle() throws {
         _ = NSApplication.shared
